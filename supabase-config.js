@@ -3,6 +3,12 @@
 // The anon/public key is designed to be used in browser apps. Do not put the
 // service_role key here.
 window.TAINT_SUPABASE_CONFIG = {
-  url: 'YOUR_PROJECT_URL',
-  anonKey: 'YOUR_ANON_PUBLIC_KEY'
+  url: 'https://pywjwsrjzgkvgplkxdry.supabase.co',
+  anonKey: 'sb_publishable_Jn4aL5TQIzd6mPm5JayQeA_M7dzGBn9',
+  auth: {
+    // Keep social buttons hidden until the matching providers are enabled in
+    // Supabase Dashboard -> Authentication -> Providers.
+    oauthProviders: [],
+    enterpriseSso: false
+  }
 };

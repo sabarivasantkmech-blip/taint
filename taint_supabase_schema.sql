@@ -1,6 +1,7 @@
 -- TAINT application database for Supabase/Postgres.
--- Run this in Supabase SQL Editor, then paste the Project URL and anon key
--- into SUPABASE_CONFIG in chennai_carbon_calculator.hardened.html.
+-- Run this in Supabase SQL Editor, then run supabase_business_storage_migration.sql
+-- for business entities, JSON artifact storage, and media storage.
+-- Paste the Project URL and anon key into supabase-config.js.
 
 begin;
 
@@ -184,6 +185,7 @@ create index if not exists idx_process_runs_created_at on public.process_runs(st
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   new.updated_at = now();
@@ -303,6 +305,12 @@ on public.profiles for insert
 to authenticated
 with check (auth_user_id = auth.uid());
 
+drop policy if exists "read own visitor device" on public.visitor_devices;
+create policy "read own visitor device"
+on public.visitor_devices for select
+to authenticated
+using (auth_user_id = auth.uid());
+
 -- Logs are write-only for guests. Signed-in users can read their own rows.
 drop policy if exists "insert app events" on public.app_events;
 create policy "insert app events"
@@ -411,5 +419,6 @@ grant select on public.app_events, public.calculation_logs, public.route_logs,
   public.product_clicks, public.process_runs to authenticated;
 grant execute on function public.increment_stat(text) to anon, authenticated;
 grant execute on function public.register_device(text, text, text) to anon, authenticated;
+revoke execute on function public.handle_new_auth_user() from anon, authenticated;
 
 commit;
