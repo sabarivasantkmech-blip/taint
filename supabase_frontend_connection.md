@@ -19,6 +19,9 @@ window.TAINT_SUPABASE_CONFIG = {
   url: 'https://your-project-ref.supabase.co',
   anonKey: 'your-anon-public-key',
   auth: {
+    siteUrl: 'https://sabarivasantkmech-blip.github.io/taint/index.html',
+    validateResetEmail: true,
+    resetEmailCooldownMs: 60000,
     oauthProviders: [],
     enterpriseSso: false
   }
@@ -58,9 +61,10 @@ Sign-up:
 Forgot password:
 
 1. User clicks `Forgot password?`.
-2. The app calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })`.
-3. User follows the email link back to the app.
-4. The app shows a new-password form and calls `supabase.auth.updateUser({ password })`.
+2. The app calls `taint_account_email_exists(email)` to verify that the address belongs to a Supabase Auth user.
+3. The app calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })` once per cooldown window.
+4. User follows the email link back to the configured `siteUrl`.
+5. The app shows a new-password form and calls `supabase.auth.updateUser({ password })`.
 
 For reliable production emails, configure Supabase Authentication -> SMTP Settings. The default Supabase email service is suitable for testing and has limits.
 
@@ -97,14 +101,13 @@ For Supabase Auth redirects, open Supabase Dashboard -> Authentication -> URL Co
 
 ```text
 Site URL:
-https://sabarivasantkmech-blip.github.io/taint/
+https://sabarivasantkmech-blip.github.io/taint/index.html
 ```
 
 Add these Redirect URLs:
 
 ```text
 https://sabarivasantkmech-blip.github.io/taint/**
-https://www.taint.com/**
 ```
 
-Keep the GitHub Pages URL even if the custom domain is used, so auth continues to work while DNS or HTTPS provisioning is settling.
+Do not point Supabase email redirects at `www.taint.com` unless that custom domain is owned, verified in GitHub Pages, and serving this repository over HTTPS.

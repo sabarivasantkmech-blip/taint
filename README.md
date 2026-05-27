@@ -44,7 +44,7 @@ python -m http.server 8787
 
 Then open `http://127.0.0.1:8787/index.html`.
 
-For production, deploy `index.html`, `supabase-config.js`, `assets/`, and `vendor/`. The GitHub Pages workflow builds a clean `_site` bundle from only those files, plus `CNAME` and `.nojekyll`, so repository SQL/docs are not published with the site. In Supabase Authentication -> URL Configuration, set the Site URL and Redirect URLs to the deployed domain.
+For production, deploy `index.html`, `supabase-config.js`, `assets/`, and `vendor/`. The GitHub Pages workflow builds a clean `_site` bundle from only those files, so repository SQL/docs are not published with the site. In Supabase Authentication -> URL Configuration, set the Site URL to `https://sabarivasantkmech-blip.github.io/taint/index.html` and add `https://sabarivasantkmech-blip.github.io/taint/**` as an allowed Redirect URL.
 
 Google, GitHub, and enterprise SSO buttons stay hidden until enabled in both Supabase Authentication -> Providers and `supabase-config.js`:
 
@@ -62,8 +62,9 @@ TAINT uses Supabase Auth for email/password accounts when Supabase is configured
 Forgot password uses Supabase's secure reset-link flow:
 
 1. User clicks `Forgot password?`.
-2. User enters their email and receives a Supabase reset email.
-3. The reset link opens the hosted app.
-4. User enters a new password in the TAINT reset form.
+2. The app validates the address against Supabase Auth through `taint_account_email_exists`.
+3. User receives one Supabase reset email per cooldown window.
+4. The reset link opens the configured hosted app.
+5. User enters a new password in the TAINT reset form.
 
 For production email delivery, configure Supabase Authentication -> SMTP settings and add your deployed URL in Authentication -> URL Configuration.

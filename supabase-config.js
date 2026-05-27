@@ -6,6 +6,11 @@ window.TAINT_SUPABASE_CONFIG = {
   url: 'https://pywjwsrjzgkvgplkxdry.supabase.co',
   anonKey: 'sb_publishable_Jn4aL5TQIzd6mPm5JayQeA_M7dzGBn9',
   auth: {
+    // Recovery and confirmation emails should return to a real deployed page,
+    // not file:// or a local test URL.
+    siteUrl: 'https://sabarivasantkmech-blip.github.io/taint/index.html',
+    validateResetEmail: true,
+    resetEmailCooldownMs: 60000,
     // Keep social buttons hidden until the matching providers are enabled in
     // Supabase Dashboard -> Authentication -> Providers.
     oauthProviders: [],

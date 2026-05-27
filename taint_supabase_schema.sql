@@ -265,6 +265,23 @@ begin
 end;
 $$;
 
+-- Validate forgot-password requests against Supabase Auth before sending mail.
+-- This intentionally returns only a boolean so the app can block typos without
+-- exposing user details.
+create or replace function public.taint_account_email_exists(p_email text)
+returns boolean
+language sql
+security definer
+set search_path = auth, public
+stable
+as $$
+  select exists (
+    select 1
+      from auth.users u
+     where lower(u.email) = lower(trim(coalesce(p_email, '')))
+  );
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Row-level security.
 -- ---------------------------------------------------------------------------
@@ -419,6 +436,8 @@ grant select on public.app_events, public.calculation_logs, public.route_logs,
   public.product_clicks, public.process_runs to authenticated;
 grant execute on function public.increment_stat(text) to anon, authenticated;
 grant execute on function public.register_device(text, text, text) to anon, authenticated;
+revoke all on function public.taint_account_email_exists(text) from public;
+grant execute on function public.taint_account_email_exists(text) to anon, authenticated;
 revoke execute on function public.handle_new_auth_user() from anon, authenticated;
 
 commit;

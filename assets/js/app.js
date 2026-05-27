@@ -3252,6 +3252,9 @@ document.getElementById('ltUseBtn').addEventListener('click', () => {
 
 let supabaseClient = null;
 let currentUser    = null;
+const AUTH_RESET_COOLDOWN_MS = Number(authSettings().resetEmailCooldownMs || 60000);
+let authResetInFlightEmail = '';
+let authLastResetRequest = { email:'', at:0 };
 
 if (SB_CONFIGURED() && window.supabase) {
   supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
@@ -3269,8 +3272,45 @@ function authSettings() {
 }
 
 function authRedirectTo() {
+  const configured = cleanAuthUrl(authSettings().siteUrl || window.TAINT_SUPABASE_CONFIG?.siteUrl || '');
+  if (configured) return configured;
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
-  return location.origin + location.pathname;
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = '';
+  return url.href;
+}
+
+function cleanAuthUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    url.search = '';
+    url.hash = '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function authUrlParams() {
+  const search = new URLSearchParams(location.search || '');
+  const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  return { search, hash };
+}
+
+function authUrlError() {
+  const { search, hash } = authUrlParams();
+  const code = search.get('error') || hash.get('error') || search.get('error_code') || hash.get('error_code');
+  if (!code) return '';
+  const desc = search.get('error_description') || hash.get('error_description') || search.get('msg') || hash.get('msg') || '';
+  const combined = `${code} ${desc}`;
+  if (/access_denied|otp_expired|expired|invalid/i.test(combined)) {
+    return 'This email link is expired, already used, or blocked by the Supabase redirect settings. Request a fresh reset link from this app.';
+  }
+  return desc || 'Supabase could not complete this email link. Request a fresh reset link from this app.';
 }
 
 function enabledOAuthProviders() {
@@ -3302,8 +3342,7 @@ function authFriendlyError(error, provider) {
 }
 
 function isPasswordRecoveryUrl() {
-  const search = new URLSearchParams(location.search || '');
-  const hash = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  const { search, hash } = authUrlParams();
   return search.get('type') === 'recovery' || hash.get('type') === 'recovery';
 }
 
@@ -3438,6 +3477,9 @@ async function localSignIn(email, password) {
 }
 function localSignOut()   { localStorage.removeItem(LOCAL_SESSION_KEY); }
 function localGetSession(){ try{return JSON.parse(localStorage.getItem(LOCAL_SESSION_KEY));}catch{return null;} }
+function normalizeAuthEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
 
 async function authSignUp(name, email, password) {
   if (supabaseClient) {
@@ -3468,11 +3510,37 @@ async function authSignIn(email, password) {
 }
 async function authSendPasswordReset(email) {
   if (!supabaseClient) throw new Error('Password reset email needs Supabase configured. Local-only accounts are stored on this device.');
+  const normalizedEmail = normalizeAuthEmail(email);
   const redirectTo = authRedirectTo();
-  if (!redirectTo) throw new Error('Password reset needs the app served over http(s). Start local hosting or use the deployed site.');
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
-  if (error) throw new Error(authFriendlyError(error, 'email'));
-  return true;
+  if (!redirectTo) throw new Error('Password reset needs a configured https redirect URL in supabase-config.js.');
+  if (authResetInFlightEmail === normalizedEmail) throw new Error('A reset link is already being sent for this email. Please wait a moment.');
+  const elapsed = Date.now() - authLastResetRequest.at;
+  if (authLastResetRequest.email === normalizedEmail && elapsed < AUTH_RESET_COOLDOWN_MS) {
+    const wait = Math.ceil((AUTH_RESET_COOLDOWN_MS - elapsed) / 1000);
+    throw new Error(`A reset link was just sent. Please wait ${wait}s before requesting another one.`);
+  }
+  authResetInFlightEmail = normalizedEmail;
+  try {
+    const exists = await authAccountExistsForReset(normalizedEmail);
+    if (!exists) throw new Error('No TAINT account was found for this email. Please sign up first.');
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+    if (error) throw new Error(authFriendlyError(error, 'email'));
+    authLastResetRequest = { email: normalizedEmail, at: Date.now() };
+    return true;
+  } finally {
+    authResetInFlightEmail = '';
+  }
+}
+async function authAccountExistsForReset(email) {
+  if (authSettings().validateResetEmail === false) return true;
+  try {
+    const { data, error } = await supabaseClient.rpc('taint_account_email_exists', { p_email: email });
+    if (error) throw error;
+    return data === true;
+  } catch (error) {
+    console.warn('TAINT reset email validation failed:', error.message || error);
+    throw new Error('Account validation is not available yet. Run the latest Supabase schema migration, then try again.');
+  }
 }
 async function authUpdateRecoveredPassword(password) {
   if (!supabaseClient) throw new Error('Password update needs Supabase configured.');
@@ -3564,7 +3632,12 @@ function toggleAccountMenu() {
   setAccountMenu(!document.getElementById('accountMenu')?.classList.contains('open'));
 }
 
-function showAuthOverlay(mode){ if (mode) setAuthMode(mode); updateAuthProviderUI(); document.getElementById('authOverlay').classList.remove('hidden'); }
+function showAuthOverlay(mode){
+  const requestedMode = typeof mode === 'string' ? mode : (authMode || 'signin');
+  setAuthMode(requestedMode);
+  updateAuthProviderUI();
+  document.getElementById('authOverlay').classList.remove('hidden');
+}
 function hideAuthOverlay(){ document.getElementById('authOverlay').classList.add('hidden'); }
 function showAuthError(msg){ const e=document.getElementById('authError'); if(e) e.textContent=msg; }
 function showAuthSuccess(msg){
@@ -3629,6 +3702,7 @@ document.addEventListener('click', async e => {
   const confirmPass=document.getElementById('authConfirmPassword')?.value || '';
   const name =document.getElementById('authName').value.trim()||email.split('@')[0];
   const btn  =document.getElementById('authSubmit');
+  if (!btn || btn.disabled) return;
   setFieldInvalid(document.getElementById('authEmail'), '');
   setFieldInvalid(document.getElementById('authPassword'), '');
   setFieldInvalid(document.getElementById('authConfirmPassword'), '');
@@ -3641,8 +3715,8 @@ document.addEventListener('click', async e => {
     btn.disabled=true; btn.textContent='Sending…';
     try {
       await authSendPasswordReset(email);
-      showAuthSuccess(`If ${email} has a TAINT account, a secure password reset email has been sent. Follow the link, then create a new password here.`);
-      notify('Password reset email requested.', 'success', 'Account');
+      showAuthSuccess(`A secure password reset email has been sent to ${email}. Follow the link, then create a new password here.`);
+      notify('Password reset email sent.', 'success', 'Account');
     } catch(err){ showAuthError(err.message); }
     finally{ btn.disabled=false; btn.textContent=authSubmitText(); }
     return;
@@ -3754,6 +3828,14 @@ if(supabaseClient){
 
 async function initAuth(){
   updateAuthProviderUI();
+  const linkError = supabaseClient ? authUrlError() : '';
+  if (linkError) {
+    updateAuthUI(currentUser);
+    showAuthOverlay('forgot');
+    showAuthError(linkError);
+    clearAuthUrlTokens();
+    return;
+  }
   const skipped   = hasAuthSkip();
   const hasSession= await restoreSession();
   if (supabaseClient && isPasswordRecoveryUrl()) {
@@ -4970,6 +5052,30 @@ function tbAmzLink(asin) {
 function tbFlipLink(pid) {
   return `https://www.flipkart.com/product/p/${pid}?affid=${TB_TAGS.flipkart}&affExtParam1=taintbuy`;
 }
+function tbAmazonSearchLink(query) {
+  const params = new URLSearchParams({ k: query, tag: TB_TAGS.amazon, language: 'en_IN' });
+  return `https://www.amazon.in/s?${params.toString()}`;
+}
+function tbFlipkartSearchLink(query) {
+  const params = new URLSearchParams({ q: query });
+  if (TB_TAGS.flipkart) {
+    params.set('affid', TB_TAGS.flipkart);
+    params.set('affExtParam1', 'taintbuy');
+  }
+  return `https://www.flipkart.com/search?${params.toString()}`;
+}
+function tbSafeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:') ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+function tbProductSearchQuery(product) {
+  const tags = Array.isArray(product.tags) ? product.tags.slice(0, 2).join(' ') : '';
+  return `${product.name} ${tags} India`.replace(/\s+/g, ' ').trim();
+}
 
 /* ── Product database ── */
 const TAINT_PRODUCTS = [
@@ -5202,6 +5308,17 @@ const TAINT_PRODUCTS = [
   },
 ];
 
+function tbNormalizeVendorLinks() {
+  TAINT_PRODUCTS.forEach(product => {
+    if (!product.links) product.links = {};
+    const query = tbProductSearchQuery(product);
+    if (product.links.amazon) product.links.amazon = tbAmazonSearchLink(query);
+    if (product.links.flipkart) product.links.flipkart = tbFlipkartSearchLink(query);
+    if (product.links.brand) product.links.brand = tbSafeExternalUrl(product.links.brand);
+  });
+}
+tbNormalizeVendorLinks();
+
 function tbVendorIcon(domain) {
   return `https://www.google.com/s2/favicons?sz=96&domain=${encodeURIComponent(domain)}`;
 }
@@ -5237,6 +5354,14 @@ function tbProductImage(product) {
   return product.image || TB_VENDOR_IMAGES[product.id] || './assets/logo1.png';
 }
 
+function tbBuyButton(platform, url, productId) {
+  const safeUrl = tbSafeExternalUrl(url);
+  if (!safeUrl) return '';
+  const labels = { amazon:'Amazon', flipkart:'Flipkart', brand:'Brand Site' };
+  const label = labels[platform] || platform;
+  return `<a class="tb-buy-btn ${platform}" href="${safeUrl}" target="_blank" rel="noopener noreferrer sponsored" onclick="tbTrack('${platform}','${productId}')">${label}</a>`;
+}
+
 /* ── Render product cards ── */
 function tbRenderGrid(products) {
   const grid = document.getElementById('tbGrid');
@@ -5247,9 +5372,9 @@ function tbRenderGrid(products) {
   grid.innerHTML = products.map(p => {
     const ecoCls  = p.eco >= 85 ? '' : 'amber';
     const buyBtns = [
-      p.links.amazon   ? `<a class="tb-buy-btn amazon"   href="${p.links.amazon}"   target="_blank" rel="noopener sponsored" onclick="tbTrack('amazon','${p.id}')">Amazon</a>`   : '',
-      p.links.flipkart ? `<a class="tb-buy-btn flipkart" href="${p.links.flipkart}" target="_blank" rel="noopener sponsored" onclick="tbTrack('flipkart','${p.id}')">Flipkart</a>` : '',
-      p.links.brand    ? `<a class="tb-buy-btn brand"    href="${p.links.brand}"    target="_blank" rel="noopener sponsored" onclick="tbTrack('brand','${p.id}')">Brand Site</a>` : '',
+      tbBuyButton('amazon', p.links.amazon, p.id),
+      tbBuyButton('flipkart', p.links.flipkart, p.id),
+      tbBuyButton('brand', p.links.brand, p.id),
     ].filter(Boolean).join('');
 
     return `
