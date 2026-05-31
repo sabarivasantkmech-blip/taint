@@ -16,12 +16,29 @@
 
 ```js
 window.TAINT_SUPABASE_CONFIG = {
+  environment: 'dev',
   url: 'https://your-project-ref.supabase.co',
   anonKey: 'your-anon-public-key',
+  environments: {
+    dev: {
+      label: 'Development',
+      url: 'https://your-dev-project-ref.supabase.co',
+      anonKey: 'your-dev-anon-public-key',
+      siteUrl: 'https://sabarivasantkmech-blip.github.io/taint/index.html'
+    },
+    prod: {
+      label: 'Production',
+      url: '',
+      anonKey: '',
+      siteUrl: 'https://your-production-domain.example/index.html'
+    }
+  },
   auth: {
     siteUrl: 'https://sabarivasantkmech-blip.github.io/taint/index.html',
     validateResetEmail: true,
     resetEmailCooldownMs: 60000,
+    adminOwnerEmails: ['owner@example.com'],
+    adminOwnerUserIds: [],
     oauthProviders: [],
     enterpriseSso: false
   }
@@ -29,6 +46,7 @@ window.TAINT_SUPABASE_CONFIG = {
 ```
 
 Do not use the `service_role` key in the front end.
+The current checked-in Supabase project is the `dev` environment. Keep `prod` empty until a separate production project and domain are ready.
 
 ## Auth Providers
 
@@ -47,6 +65,8 @@ auth: {
 If a social provider is not enabled in Supabase, Supabase returns `Unsupported provider: provider is not enabled`. Keeping the provider out of `oauthProviders` prevents users from seeing a broken button.
 
 OAuth and SSO must be tested from `http://localhost`, `127.0.0.1`, or a deployed `https://` URL. They will not work correctly from `file://`.
+
+Taint Admin is an owner-only UI surface. It appears only when a Supabase-authenticated user matches `adminOwnerEmails` or `adminOwnerUserIds` in `supabase-config.js`.
 
 ## Sign-Up Email And Forgot Password
 

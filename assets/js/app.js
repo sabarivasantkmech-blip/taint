@@ -1664,6 +1664,7 @@ function updateAdminStats() {
   set('adminCalcs', text('statCalcs'));
   set('adminCalcsLbl', text('statCalcsLbl'));
   set('adminMonth', text('statMonth'));
+  updateRuntimeUI();
 }
 
 // ──────────────────────────────────────────────────────
@@ -2452,6 +2453,8 @@ function setCity(key) {
   /* Logo */
   const lc = document.getElementById('logoCity');
   if (lc) lc.textContent = city().name;
+  const logo = document.querySelector('.logo');
+  if (logo) logo.setAttribute('aria-label', `TAINT ${city().name} home`);
 
   /* Route input placeholders */
   document.getElementById('fromLoc')?.setAttribute('placeholder', city().placeholder.from);
@@ -3268,7 +3271,36 @@ if (SB_CONFIGURED() && window.supabase) {
 }
 
 function authSettings() {
-  return (window.TAINT_SUPABASE_CONFIG && window.TAINT_SUPABASE_CONFIG.auth) || {};
+  const cfg = window.TAINT_SUPABASE_CONFIG || {};
+  const envName = SUPABASE_CONFIG.environment || cfg.environment || 'dev';
+  const envCfg = (cfg.environments && cfg.environments[envName]) || {};
+  const envHasSiteUrl = !!(cfg.environments &&
+    Object.prototype.hasOwnProperty.call(cfg.environments, envName) &&
+    Object.prototype.hasOwnProperty.call(envCfg, 'siteUrl'));
+  return {
+    ...(cfg.auth || {}),
+    ...(envCfg.auth || {}),
+    siteUrl: envHasSiteUrl ? String(envCfg.siteUrl || '').trim() : (cfg.auth?.siteUrl || SUPABASE_CONFIG.siteUrl || cfg.siteUrl || '')
+  };
+}
+
+function runtimeSettings() {
+  const cfg = window.TAINT_SUPABASE_CONFIG || {};
+  const envName = SUPABASE_CONFIG.environment || cfg.environment || 'dev';
+  const envCfg = (cfg.environments && cfg.environments[envName]) || {};
+  return { cfg, envName, envCfg };
+}
+
+function isTaintAdminOwner(user=currentUser) {
+  if (!user || user.provider !== 'supabase') return false;
+  const settings = authSettings();
+  const ownerEmails = Array.isArray(settings.adminOwnerEmails)
+    ? settings.adminOwnerEmails.map(normalizeAuthEmail).filter(Boolean)
+    : [];
+  const ownerIds = Array.isArray(settings.adminOwnerUserIds)
+    ? settings.adminOwnerUserIds.map(id => String(id || '').trim()).filter(Boolean)
+    : [];
+  return ownerIds.includes(String(user.id || '').trim()) || ownerEmails.includes(normalizeAuthEmail(user.email));
 }
 
 function authRedirectTo() {
@@ -3324,6 +3356,31 @@ function isOAuthProviderEnabled(provider) {
 
 function isEnterpriseSsoEnabled() {
   return authSettings().enterpriseSso === true;
+}
+
+function updateRuntimeUI() {
+  const { envName, envCfg } = runtimeSettings();
+  const envLabel = envCfg.label || SUPABASE_CONFIG.label || envName;
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('adminEnvName', envName);
+  setText('adminEnvProject', `${envLabel} Supabase`);
+  setText('adminEnvSite', authRedirectTo() || 'No redirect URL configured');
+}
+
+function syncAdminVisibility() {
+  const allowed = isTaintAdminOwner();
+  document.querySelectorAll('[data-mode="admin"], [data-admin-only="true"]').forEach(el => {
+    el.hidden = !allowed;
+    el.disabled = !allowed;
+    el.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+  });
+  const state = document.getElementById('adminAccessState');
+  if (state) state.textContent = allowed ? 'Supabase owner' : 'Owner only';
+  updateRuntimeUI();
+  const adminSection = document.getElementById('adminSection');
+  const adminVisible = !!adminSection && adminSection.style.display !== 'none';
+  if (!allowed && adminVisible && typeof setMode === 'function') setMode('commute');
+  return allowed;
 }
 
 function providerLabel(provider) {
@@ -3621,6 +3678,7 @@ function updateAuthUI(user) {
   if(mp) mp.textContent=provider;
   if(details){ details.textContent=isGuest?'Sign in to view details':'Account details'; details.disabled=false; }
   if(logout){ logout.textContent=isGuest?'Sign In / Sign Up':'Logout'; }
+  syncAdminVisibility();
 }
 
 function setAccountMenu(open) {
@@ -3777,6 +3835,12 @@ document.addEventListener('click', e => {
   hideAuthOverlay(); currentUser=null; updateAuthUI(null);
   rememberAuthSkip(true);
   notify('Continuing in guest mode. Preference saved with a first-party SameSite cookie.', 'success', 'Account');
+});
+
+document.addEventListener('click', e => {
+  if (e.target?.id !== 'cookieClearBtn') return;
+  rememberAuthSkip(false);
+  notify('TAINT guest preference cookie cleared.', 'success', 'Cookies');
 });
 
 document.addEventListener('click', e => {
@@ -4513,10 +4577,10 @@ function buildSidebar() {
       {mode:'home',      icon:'🏠', label:'My Home'},
       {mode:'taint',     icon:'🌿', label:'My Taint'},
       {mode:'buy',       icon:'🛒', label:'Taint Buy'},
-      {mode:'admin',     icon:'⚙️', label:'Admin'},
+      {mode:'admin',     icon:'⚙️', label:'Taint Admin', adminOnly:true},
     ];
     sbModes.innerHTML = modes.map(m =>
-      `<button class="sb-mode-btn${m.mode==='commute'?' active':''}" data-mode="${m.mode}">
+      `<button class="sb-mode-btn${m.mode==='commute'?' active':''}" data-mode="${m.mode}"${m.adminOnly?' data-admin-only="true" hidden':''}>
          ${m.icon} ${m.label}
        </button>`
     ).join('');
@@ -4535,6 +4599,7 @@ function buildSidebar() {
   updateSbCity();
   updateSbWeather();
   updateSbStats();
+  syncAdminVisibility();
 }
 
 function updateSbCity() {
@@ -4595,6 +4660,16 @@ if (_aqiValEl) {
 
 // ──────────────────────────────────────────────────────
 function setMode(mode) {
+  if (mode === 'admin' && !isTaintAdminOwner()) {
+    syncAdminVisibility();
+    if (!currentUser) {
+      showAuthOverlay('signin');
+      showAuthError('Taint Admin is visible only after the Supabase owner signs in.');
+    } else {
+      notify('Taint Admin is restricted to the configured Supabase owner.', 'warn', 'Admin');
+    }
+    mode = 'commute';
+  }
   document.querySelectorAll('.mode-tab').forEach(b =>
     b.classList.toggle('active', b.dataset.mode === mode));
   document.querySelectorAll('.sb-mode-btn').forEach(b =>
@@ -4608,6 +4683,7 @@ function setMode(mode) {
   if (mode === 'taint') mtImportSavedModeResults();
   if (mode === 'buy') tbInit();
   if (mode === 'admin') updateAdminStats();
+  syncAdminVisibility();
 }
 
 document.querySelectorAll('.mode-tab').forEach(btn => {
@@ -4724,6 +4800,8 @@ function mtUpdateProgress() {
   const saveBtn = document.getElementById('mtSaveBtn');
   saveBtn.textContent = isLast ? '✓ Finish' : 'Save & Next →';
   document.getElementById('mtSkipBtn').style.display = isLast ? 'none' : '';
+  const calcAction = document.getElementById('mtCalcAction');
+  if (calcAction) calcAction.hidden = mtCurrentStep !== 4;
 }
 
 /* Show the current step panel */

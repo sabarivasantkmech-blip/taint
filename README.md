@@ -29,7 +29,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 3. Run `supabase_business_storage_migration.sql`.
 4. Run `supabase_sensitive_data_encryption.sql`.
 5. Run `supabase_security_advisor_followup.sql`, then `supabase_policy_performance_followup.sql`.
-6. Paste your Project URL and anon or publishable public key into `supabase-config.js`.
+6. Paste your Project URL and anon or publishable public key into the `dev` environment in `supabase-config.js`. The checked-in project is treated as development; fill the `prod` environment only when a production Supabase project is ready.
 7. Open the app and run `await window.taintCheckSupabase()` in the browser console.
 
 Do not put the Supabase `service_role` key in any front-end file.
@@ -46,10 +46,12 @@ Then open `http://127.0.0.1:8787/index.html`.
 
 For production, deploy `index.html`, `supabase-config.js`, `assets/`, and `vendor/`. The GitHub Pages workflow builds a clean `_site` bundle from only those files, so repository SQL/docs are not published with the site. In Supabase Authentication -> URL Configuration, set the Site URL to `https://sabarivasantkmech-blip.github.io/taint/index.html` and add `https://sabarivasantkmech-blip.github.io/taint/**` as an allowed Redirect URL.
 
-Google, GitHub, and enterprise SSO buttons stay hidden until enabled in both Supabase Authentication -> Providers and `supabase-config.js`:
+Google, GitHub, and enterprise SSO buttons stay hidden until enabled in both Supabase Authentication -> Providers and `supabase-config.js`. Taint Admin stays hidden unless the signed-in Supabase user matches `auth.adminOwnerEmails` or `auth.adminOwnerUserIds`.
 
 ```js
+environment: 'dev',
 auth: {
+  adminOwnerEmails: ['owner@example.com'],
   oauthProviders: ['google', 'github'],
   enterpriseSso: false
 }
