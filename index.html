@@ -3,7 +3,7 @@
 <head>
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  TAINT — Chennai Carbon Emissions Calculator                                ║
+║  TAINT — Carbon Emissions Calculator                                        ║
 ║  "Taint the Great Job Carefully!"                                           ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║  HOW TO HOST (free, no server required)                                     ║
@@ -40,8 +40,8 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.anthropic.com https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.waqi.info https://api.open-meteo.com https://*.supabase.co https://formsubmit.co https://server.arcgisonline.com; form-action 'self' https://formsubmit.co; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self';">
 
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>TAINT — Chennai Carbon Emissions Calculator</title>
-<meta name="description" content="TAINT: Taint the Great Job Carefully! Calculate CO₂ emissions for your Chennai commute."/>
+<title>TAINT — Carbon Emissions Calculator</title>
+<meta name="description" content="TAINT: Taint the Great Job Carefully! Calculate CO₂ emissions for Indian city commutes, homes, workplaces, and purchases."/>
 <meta name="theme-color" content="#090b0d" id="themeMeta"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -52,7 +52,7 @@
 <!-- Supabase used for global stats (no SDK needed — plain fetch) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.1/dist/umd/supabase.min.js" integrity="sha384-dzQgxMPp/h+N0t5qDf6Bp516wKZr3pXgGMpA7/ZM6tiWkqYo90N060L03dxnZ8Tf" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
-<link rel="stylesheet" href="./assets/css/app.css?v=20260531-regression"/>
+<link rel="stylesheet" href="./assets/css/app.css?v=20260531-data-regression"/>
 
 </head>
 <body>
@@ -69,9 +69,9 @@
   <div class="topbar-inner">
 
     <!-- Brand -->
-    <a class="logo" href="#" aria-label="TAINT Chennai home">
+    <a class="logo" href="#" aria-label="TAINT home">
       <img class="logo-mark" src="./assets/logo1.png" alt="">
-      <span class="logo-text"><span class="logo-name">TAINT</span><span class="logo-city" id="logoCity">Chennai</span></span>
+      <span class="logo-text"><span class="logo-name">TAINT</span></span>
     </a>
 
     <!-- Live clock -->
@@ -136,7 +136,6 @@
     <div class="sb-brand">
       <img class="sb-brand-logo" src="./assets/logo1.png" alt="">
       <span class="sb-brand-name">TAINT</span>
-      <span class="sb-brand-city" id="sbCity">Chennai</span>
     </div>
     <div class="sb-label">City</div>
     <div class="sb-cities" id="sbCities"></div>
@@ -161,7 +160,7 @@
     <!-- ── HEADER ── -->
   <div class="header">
     <div class="badge-row">
-      <span class="badge">🌿 Chennai · Tamil Nadu · India</span>
+      <span class="badge">🌿 India · Multi-city</span>
       <span class="aqi-badge" id="aqiBadge">🌫️ AQI checking…</span>
       <span class="aqi-badge" id="tempBadge">🌡️ fetching temp…</span>
     </div>
@@ -457,6 +456,14 @@
        RIGHT : synced satellite view with an aerosol haze proxy
                scaled by calculated CO₂, fuel, and PUC status
        ══════════════════════════════════════════════════ -->
+  <div class="card recent-card" id="commuteHistoryCard">
+    <div class="card-title">Recent Commute Calculations <span class="recent-meta" id="commuteRecentMeta">latest 5</span></div>
+    <div class="recent-layout">
+      <div class="recent-list" id="commuteRecentList"><div class="recent-empty">Sign in or calculate to see recent commute results.</div></div>
+      <div class="trend-chart" id="commuteTrendChart" aria-label="Commute trend chart"></div>
+    </div>
+  </div>
+
   <div class="card" id="cityVisionCard">
     <div class="card-title">City vision — Satellite vs Smog Proxy</div>
     <p class="vision-intro">
@@ -1018,6 +1025,14 @@
     </div>
   </div>
 
+  <div class="card recent-card" id="workplaceHistoryCard">
+    <div class="card-title">Recent Workplace Calculations <span class="recent-meta" id="workplaceRecentMeta">latest 5</span></div>
+    <div class="recent-layout">
+      <div class="recent-list" id="workplaceRecentList"><div class="recent-empty">Sign in or calculate to see recent workplace results.</div></div>
+      <div class="trend-chart" id="workplaceTrendChart" aria-label="Workplace trend chart"></div>
+    </div>
+  </div>
+
   </div><!-- /workplaceSection -->
 
   <!-- ════════════════════════════════════════════
@@ -1351,6 +1366,14 @@
     </div>
   </div>
 
+  <div class="card recent-card" id="homeHistoryCard">
+    <div class="card-title">Recent Home Calculations <span class="recent-meta" id="homeRecentMeta">latest 5</span></div>
+    <div class="recent-layout">
+      <div class="recent-list" id="homeRecentList"><div class="recent-empty">Sign in or calculate to see recent home results.</div></div>
+      <div class="trend-chart" id="homeTrendChart" aria-label="Home trend chart"></div>
+    </div>
+  </div>
+
   </div><!-- /homeSection -->
 
   <!-- ════════════════════════════════════════════
@@ -1550,6 +1573,14 @@
     <button class="mt-nav-btn save" id="mtSaveBtn">Save &amp; Next →</button>
   </div>
 
+  <div class="card recent-card" id="taintHistoryCard">
+    <div class="card-title">Recent My Taint Profiles <span class="recent-meta" id="taintRecentMeta">latest 5</span></div>
+    <div class="recent-layout">
+      <div class="recent-list" id="taintRecentList"><div class="recent-empty">Sign in or calculate to see recent My Taint profiles.</div></div>
+      <div class="trend-chart" id="taintTrendChart" aria-label="My Taint trend chart"></div>
+    </div>
+  </div>
+
   </div><!-- /taintSection -->
 
   <!-- ════════════════════════════════════════════
@@ -1599,6 +1630,14 @@
 
   <!-- Product grid -->
   <div class="tb-grid" id="tbGrid"></div>
+
+  <div class="card recent-card" id="buyHistoryCard">
+    <div class="card-title">Taint Buy Checkout List <span class="recent-meta" id="buyRecentMeta">latest 5</span></div>
+    <div class="recent-layout">
+      <div class="recent-list" id="buyRecentList"><div class="recent-empty">Open a vendor link or mark a product bought to build your list.</div></div>
+      <div class="trend-chart" id="buyTrendChart" aria-label="Taint Buy trend chart"></div>
+    </div>
+  </div>
 
   <!-- How it works -->
   <div class="card" id="tbHowItWorks" style="margin-top:24px">
@@ -1776,13 +1815,13 @@
        3. Settings → API → copy Project URL and anon/public key below
      Leave as-is to run in local-only mode (no global stats).
      ═══════════════════════════════════════════════ -->
-<script src="./supabase-config.js?v=20260531-regression"></script>
-<script src="./assets/js/supabase-runtime-config.js?v=20260531-regression" defer></script>
+<script src="./supabase-config.js?v=20260531-data-regression"></script>
+<script src="./assets/js/supabase-runtime-config.js?v=20260531-data-regression" defer></script>
 
 <!-- ═══════════════════════════════════════════════
      MAIN APPLICATION SCRIPT
      ═══════════════════════════════════════════════ -->
-<script src="./assets/js/app.js?v=20260531-regression" defer></script>
+<script src="./assets/js/app.js?v=20260531-data-regression" defer></script>
 <!-- ── AUTH OVERLAY ── -->
 <div class="auth-overlay hidden" id="authOverlay">
   <div class="auth-card" id="authCard">
@@ -1796,8 +1835,8 @@
 
     <div class="auth-body">
       <div class="auth-field" id="authNameField" style="display:none">
-        <label>Your name</label>
-        <input type="text" id="authName" class="auth-input" placeholder="e.g. Priya Kumar" autocomplete="name" maxlength="60"/>
+        <label>Username</label>
+        <input type="text" id="authName" class="auth-input" placeholder="Letters, numbers, spaces, . _ -" autocomplete="username" maxlength="60"/>
       </div>
       <div class="auth-field" id="authEmailField">
         <label>Email</label>
@@ -1805,11 +1844,11 @@
       </div>
       <div class="auth-field" id="authPasswordField">
         <label id="authPasswordLabel">Password</label>
-        <input type="password" id="authPassword" class="auth-input" placeholder="Minimum 8 characters" autocomplete="current-password" maxlength="100"/>
+        <input type="password" id="authPassword" class="auth-input" placeholder="Minimum 8 characters" autocomplete="current-password" maxlength="72"/>
       </div>
       <div class="auth-field" id="authConfirmPasswordField" style="display:none">
         <label>Confirm new password</label>
-        <input type="password" id="authConfirmPassword" class="auth-input" placeholder="Re-enter new password" autocomplete="new-password" maxlength="100"/>
+        <input type="password" id="authConfirmPassword" class="auth-input" placeholder="Re-enter new password" autocomplete="new-password" maxlength="72"/>
       </div>
       <div class="auth-error" id="authError"></div>
       <div class="auth-success" id="authSuccess" hidden></div>
@@ -1837,6 +1876,13 @@
 
     <p class="auth-note">Your calculations run entirely in your browser. Sign in to sync your profile across devices. TAINT sends confirmation and reset links only; passwords are never emailed.</p>
   </div>
+</div>
+<div class="cookie-consent hidden" id="cookieConsent" role="dialog" aria-live="polite" aria-label="Cookie notice">
+  <div>
+    <b>Cookie use</b>
+    <span>TAINT uses one first-party preference cookie for guest mode and this acknowledgement. No ads, no tracking, and no GitHub account cookies are read.</span>
+  </div>
+  <button type="button" id="cookieAcceptBtn">Accept</button>
 </div>
 <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>
 

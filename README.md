@@ -28,7 +28,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 2. Run `taint_supabase_schema.sql` in SQL Editor.
 3. Run `supabase_business_storage_migration.sql`.
 4. Run `supabase_sensitive_data_encryption.sql`.
-5. Run `supabase_security_advisor_followup.sql`, then `supabase_policy_performance_followup.sql`.
+5. Run `supabase_security_advisor_followup.sql`, `supabase_policy_performance_followup.sql`, then `supabase_regression_data_followup.sql`.
 6. Paste your Project URL and anon or publishable public key into the `dev` environment in `supabase-config.js`. The checked-in project is treated as development; fill the `prod` environment only when a production Supabase project is ready.
 7. Open the app and run `await window.taintCheckSupabase()` in the browser console.
 

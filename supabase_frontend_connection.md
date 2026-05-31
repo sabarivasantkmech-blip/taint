@@ -68,6 +68,8 @@ OAuth and SSO must be tested from `http://localhost`, `127.0.0.1`, or a deployed
 
 Taint Admin is an owner-only UI surface. It appears only when a Supabase-authenticated user matches `adminOwnerEmails` or `adminOwnerUserIds` in `supabase-config.js`.
 
+Run `supabase_regression_data_followup.sql` after the base schema files to enable strict forgot-password email validation, profile usernames, and Taint Buy checkout/bought history.
+
 ## Sign-Up Email And Forgot Password
 
 TAINT does not email plaintext login passwords. Supabase stores password hashes and sends secure confirmation/recovery links.

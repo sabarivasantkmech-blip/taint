@@ -102,8 +102,50 @@ window.addEventListener('unhandledrejection', e => {
     { toast:false });
 });
 
+const AUTH_USERNAME_RE = /^[A-Za-z][A-Za-z0-9 ._-]{1,59}$/;
+const AUTH_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+const AUTH_PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,72}$/;
+
 function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value || '').trim());
+  const email = String(value || '').trim();
+  return email.length <= 254 && AUTH_EMAIL_RE.test(email) && !email.includes('..');
+}
+
+function validateUsernameValue(value) {
+  const username = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!AUTH_USERNAME_RE.test(username)) {
+    return { ok:false, value:username, message:'Username must start with a letter and use 2-60 letters, numbers, spaces, dots, underscores, or hyphens.' };
+  }
+  return { ok:true, value:username };
+}
+
+function validateEmailValue(value) {
+  const email = normalizeAuthEmail(value);
+  if (!isValidEmail(email)) return { ok:false, value:email, message:'Email must be a valid address, for example name@example.com.' };
+  return { ok:true, value:email };
+}
+
+function validatePasswordValue(value, { strong=false, label='Password' }={}) {
+  const password = String(value || '');
+  if (password.length < 8 || password.length > 72) return { ok:false, message:`${label} must be 8-72 characters.` };
+  if (/[\u0000-\u001f\u007f]/.test(password)) return { ok:false, message:`${label} cannot contain control characters.` };
+  if (strong && !AUTH_PASSWORD_RE.test(password)) {
+    return { ok:false, message:`${label} must include uppercase, lowercase, number, and symbol characters.` };
+  }
+  return { ok:true };
+}
+
+function collectFormFields(scopeSelector) {
+  const scope = document.querySelector(scopeSelector);
+  if (!scope) return {};
+  const data = {};
+  scope.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+    if (el.type === 'button' || el.type === 'submit' || el.type === 'reset') return;
+    if (el.type === 'checkbox') data[el.id] = !!el.checked;
+    else if (el.type === 'radio') { if (el.checked) data[el.name || el.id] = el.value; }
+    else data[el.id] = el.value;
+  });
+  return data;
 }
 
 function setFieldInvalid(el, message='') {
@@ -1430,15 +1472,25 @@ function sbAuthUserId() {
   return currentUser?.provider === 'supabase' ? currentUser.id : null;
 }
 
+const SB_SIGNED_IN_DATA_TABLES = new Set([
+  'calculation_logs',
+  'carbon_profiles',
+  'product_clicks',
+  'product_purchases',
+  'route_logs'
+]);
+
 async function sbPost(table, payload, kind='functional') {
   if (!SB_CONFIGURED()) return null;
+  const authUserId = sbAuthUserId();
+  if (SB_SIGNED_IN_DATA_TABLES.has(table) && !authUserId) return null;
   return enqueueWrite(async () => {
     const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${table}`, {
       method : 'POST',
       headers: { ...(await SB_AUTH_HEADERS()), 'Prefer':'return=representation' },
       body   : JSON.stringify({
         device_id   : getOrCreateUID(),
-        auth_user_id: sbAuthUserId(),
+        auth_user_id: authUserId,
         ...payload
       })
     }, { label:`${table} insert`, timeout:9000, retries:1 });
@@ -1455,6 +1507,7 @@ async function sbUpsertProfile(user=currentUser) {
       headers: { ...(await SB_AUTH_HEADERS()), 'Prefer':'resolution=merge-duplicates,return=minimal' },
       body   : JSON.stringify({
         auth_user_id: user.id,
+        username    : user.name || null,
         display_name: user.name || null,
         email       : user.email || null,
         city_key    : currentCityKey,
@@ -1593,6 +1646,215 @@ function sbStoreSensitiveProfile(user=currentUser) {
 window.taintUploadJsonArtifact = sbUploadJsonArtifact;
 window.taintStoreSensitiveData = sbStoreSensitiveData;
 window.taintGetSensitiveData = sbGetSensitiveData;
+
+const RECENT_MODE_CONFIG = {
+  commute: {
+    localKey:'taint_recent_commute_v1',
+    listId:'commuteRecentList',
+    chartId:'commuteTrendChart',
+    metaId:'commuteRecentMeta',
+    table:'calculation_logs',
+    select:'created_at,city_name,category,fuel,vehicle,distance_km,passengers,per_passenger_kg,result,raw_input',
+    query:'calculation_type=eq.commute',
+    empty:'Sign in or calculate to see recent commute results.'
+  },
+  workplace: {
+    localKey:'taint_recent_workplace_v1',
+    listId:'workplaceRecentList',
+    chartId:'workplaceTrendChart',
+    metaId:'workplaceRecentMeta',
+    table:'carbon_profiles',
+    select:'created_at,city_name,total_tco2e,per_capita_tco2e,grade,inputs,results',
+    query:'profile_type=eq.workplace',
+    empty:'Sign in or calculate to see recent workplace results.'
+  },
+  home: {
+    localKey:'taint_recent_home_v1',
+    listId:'homeRecentList',
+    chartId:'homeTrendChart',
+    metaId:'homeRecentMeta',
+    table:'carbon_profiles',
+    select:'created_at,city_name,total_tco2e,per_capita_tco2e,grade,inputs,results',
+    query:'profile_type=eq.household',
+    empty:'Sign in or calculate to see recent home results.'
+  },
+  taint: {
+    localKey:'taint_recent_my_taint_v1',
+    listId:'taintRecentList',
+    chartId:'taintTrendChart',
+    metaId:'taintRecentMeta',
+    table:'carbon_profiles',
+    select:'created_at,city_name,total_tco2e,per_capita_tco2e,grade,inputs,results',
+    query:'profile_type=eq.my_taint',
+    empty:'Sign in or calculate to see recent My Taint profiles.'
+  },
+  buy: {
+    localKey:'taint_buy_history_v1',
+    listId:'buyRecentList',
+    chartId:'buyTrendChart',
+    metaId:'buyRecentMeta',
+    table:'product_purchases',
+    select:'created_at,product_id,product_name,platform,status,price_num,quantity,city_name,metadata',
+    query:'status=in.(checked_out,bought)',
+    empty:'Open a vendor link or mark a product bought to build your list.'
+  }
+};
+
+function readLocalRecent(mode) {
+  const cfg = RECENT_MODE_CONFIG[mode];
+  if (!cfg) return [];
+  try { return JSON.parse(localStorage.getItem(cfg.localKey) || '[]').filter(Boolean); }
+  catch { return []; }
+}
+
+function writeLocalRecent(mode, records) {
+  const cfg = RECENT_MODE_CONFIG[mode];
+  if (!cfg) return;
+  try { localStorage.setItem(cfg.localKey, JSON.stringify(records.slice(0, 25))); } catch {}
+}
+
+function recentRecord(mode, record) {
+  const now = new Date().toISOString();
+  return {
+    id: record.id || `${mode}-${Date.now()}`,
+    mode,
+    at: record.at || now,
+    city: record.city || city().name,
+    title: record.title || mode,
+    detail: record.detail || '',
+    value: Number(record.value || 0),
+    unit: record.unit || 't/yr',
+    grade: record.grade || '',
+    payload: record.payload || {}
+  };
+}
+
+function saveRecentRecord(mode, record) {
+  const row = recentRecord(mode, record);
+  const existing = readLocalRecent(mode).filter(item => item.id !== row.id);
+  writeLocalRecent(mode, [row, ...existing]);
+  renderRecentCalculations(mode);
+}
+
+function rowToRecent(mode, row) {
+  if (mode === 'commute') {
+    const perPassenger = Number(row.per_passenger_kg || 0);
+    const annual = Number(row.result?.annualTco2e || (perPassenger * 2 * 260 / 1000));
+    return recentRecord(mode, {
+      id: row.id || row.created_at,
+      at: row.created_at,
+      city: row.city_name,
+      title: `${row.vehicle || row.fuel || 'Commute'} route`,
+      detail: `${Number(row.distance_km || 0).toFixed(1)} km · ${row.passengers || 1} passenger(s)`,
+      value: annual,
+      unit: 't/yr',
+      payload: row
+    });
+  }
+  if (mode === 'buy') {
+    const status = row.status === 'bought' ? 'Bought' : 'Checked out';
+    return recentRecord(mode, {
+      id: row.id || row.created_at,
+      at: row.created_at,
+      city: row.city_name,
+      title: row.product_name || row.product_id || 'Taint Buy product',
+      detail: `${status}${row.platform ? ` · ${row.platform}` : ''}`,
+      value: Number(row.price_num || 0),
+      unit: 'INR',
+      payload: row
+    });
+  }
+  return recentRecord(mode, {
+    id: row.id || row.created_at,
+    at: row.created_at,
+    city: row.city_name,
+    title: mode === 'taint' ? 'My Taint profile' : `${mode[0].toUpperCase()}${mode.slice(1)} profile`,
+    detail: row.grade ? `Grade ${row.grade}` : '',
+    value: Number(row.total_tco2e || 0),
+    unit: 't/yr',
+    grade: row.grade || '',
+    payload: row
+  });
+}
+
+async function fetchRecentRemote(mode) {
+  const cfg = RECENT_MODE_CONFIG[mode];
+  if (!cfg || !SB_CONFIGURED() || !currentUser || currentUser.provider !== 'supabase') return null;
+  const url = `${SUPABASE_CONFIG.url}/rest/v1/${cfg.table}?${cfg.query}&select=${encodeURIComponent(cfg.select)}&order=created_at.desc&limit=5`;
+  const res = await appFetch(url, { headers: await SB_AUTH_HEADERS() }, { label:`${mode} history`, timeout:9000, retries:1 });
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows.map(row => rowToRecent(mode, row)) : [];
+}
+
+function trendSvg(records, mode) {
+  const values = records.map(r => Number(r.value || 0)).filter(v => Number.isFinite(v));
+  if (!values.length) return 'No trend yet';
+  const width = 260, height = 132, pad = 18;
+  const max = Math.max(...values, mode === 'buy' ? 1 : 0.1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 0.001);
+  const points = values.slice().reverse().map((v, i, arr) => {
+    const x = pad + (arr.length === 1 ? (width - pad * 2) : i * (width - pad * 2) / (arr.length - 1));
+    const y = height - pad - ((v - min) / range) * (height - pad * 2);
+    return [x, y, v];
+  });
+  const poly = points.map(([x,y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = `${pad},${height-pad} ${poly} ${width-pad},${height-pad}`;
+  const unit = mode === 'buy' ? 'INR' : 't';
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Stored ${mode} trend">
+    <line class="trend-axis" x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}"></line>
+    <line class="trend-axis" x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}"></line>
+    <polygon class="trend-area" points="${area}"></polygon>
+    <polyline class="trend-line" points="${poly}"></polyline>
+    ${points.map(([x,y]) => `<circle class="trend-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"></circle>`).join('')}
+    <text class="trend-label" x="${pad}" y="12">${max.toFixed(mode === 'buy' ? 0 : 2)} ${unit}</text>
+    <text class="trend-label" x="${pad}" y="${height-2}">${records.length} saved</text>
+  </svg>`;
+}
+
+function renderRecentCalculations(mode, incoming=null) {
+  const cfg = RECENT_MODE_CONFIG[mode];
+  const list = cfg && document.getElementById(cfg.listId);
+  const chart = cfg && document.getElementById(cfg.chartId);
+  const meta = cfg && document.getElementById(cfg.metaId);
+  if (!cfg || !list || !chart) return;
+  const records = (incoming || readLocalRecent(mode)).slice(0, 5);
+  if (meta) meta.textContent = currentUser?.provider === 'supabase' ? 'signed-in latest 5' : 'local latest 5';
+  if (!records.length) {
+    list.innerHTML = `<div class="recent-empty">${cfg.empty}</div>`;
+    chart.textContent = 'No trend yet';
+    return;
+  }
+  list.innerHTML = records.map(r => {
+    const date = new Date(r.at).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+    const value = r.unit === 'INR' ? `₹${Number(r.value || 0).toLocaleString('en-IN')}` : `${Number(r.value || 0).toFixed(2)} ${escapeHTML(r.unit)}`;
+    return `<div class="recent-row">
+      <div>
+        <div class="recent-title">${escapeHTML(r.title)}</div>
+        <div class="recent-detail">${escapeHTML(r.city || '')} · ${escapeHTML(date)}${r.detail ? ` · ${escapeHTML(r.detail)}` : ''}</div>
+      </div>
+      <div class="recent-value">${value}</div>
+    </div>`;
+  }).join('');
+  chart.innerHTML = trendSvg(records, mode);
+}
+
+async function refreshRecentCalculations(mode) {
+  renderRecentCalculations(mode);
+  try {
+    const remote = await fetchRecentRemote(mode);
+    if (remote) {
+      writeLocalRecent(mode, remote);
+      renderRecentCalculations(mode, remote);
+    }
+  } catch (e) {
+    console.warn(`TAINT ${mode} history read skipped:`, e.message);
+  }
+}
+
+function refreshAllRecentCalculations() {
+  Object.keys(RECENT_MODE_CONFIG).forEach(mode => refreshRecentCalculations(mode));
+}
 
 /* Update the stats display from Supabase */
 async function refreshGlobalStats() {
@@ -1801,9 +2063,17 @@ function calculate(options={}) {
       per_passenger_kg: perPax,
       from_label      : document.getElementById('fromLoc')?.value?.trim() || null,
       to_label        : document.getElementById('toLoc')?.value?.trim() || null,
-      raw_input       : { hybridType: currentHtype, linkedDistance: distLinked, avgOccupancy: veh.avgOccupancy || null },
-      result          : { trees, gPerKm: adjustedGPerKm, baseGPerKm: veh.gPerKm, fuelLabel: FUEL_META[currentFuel]?.label || currentFuel, puc }
+      raw_input       : { ...collectFormFields('#commuteSection'), hybridType: currentHtype, linkedDistance: distLinked, avgOccupancy: veh.avgOccupancy || null },
+      result          : { annualTco2e, trees, gPerKm: adjustedGPerKm, baseGPerKm: veh.gPerKm, fuelLabel: FUEL_META[currentFuel]?.label || currentFuel, puc }
     }, 'functional');
+    saveRecentRecord('commute', {
+      city: city().name,
+      title: veh.label,
+      detail: `${dist.toFixed(1)} km · ${pax} passenger(s)`,
+      value: annualTco2e,
+      unit: 't/yr',
+      payload: window._commuteResult
+    });
   }
 }
 
@@ -2454,7 +2724,7 @@ function setCity(key) {
   const lc = document.getElementById('logoCity');
   if (lc) lc.textContent = city().name;
   const logo = document.querySelector('.logo');
-  if (logo) logo.setAttribute('aria-label', `TAINT ${city().name} home`);
+  if (logo) logo.setAttribute('aria-label', 'TAINT home');
 
   /* Route input placeholders */
   document.getElementById('fromLoc')?.setAttribute('placeholder', city().placeholder.from);
@@ -2609,6 +2879,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   /* Usage tracker */
   renderTracker(); updateMonthStat();
+  syncCookieConsent();
+  refreshAllRecentCalculations();
 
   /* Auth — restore session or show overlay */
   initAuth();
@@ -3392,6 +3664,9 @@ function authFriendlyError(error, provider) {
   if (/unsupported provider|provider.*not enabled/i.test(msg)) {
     return `${providerLabel(provider)} sign-in is not enabled in Supabase. Use email/password, continue as guest, or enable the provider in Supabase Authentication → Providers.`;
   }
+  if (/email.*provider|provider.*email|email.*disabled|email.*not enabled|smtp/i.test(msg)) {
+    return 'Email/password authentication is not fully enabled in Supabase. Enable Email in Authentication -> Providers and configure SMTP before production.';
+  }
   if (/invalid login credentials/i.test(msg)) return 'Incorrect email or password.';
   if (/email.*not confirmed|confirm.*email/i.test(msg)) return 'Please confirm your email, then sign in.';
   if (/signup|signups.*disabled|disabled/i.test(msg)) return 'Email sign-up is disabled in Supabase. Enable Email in Authentication → Providers, or continue in guest mode.';
@@ -3449,6 +3724,7 @@ async function hashPwd(password, salt) {
 const LOCAL_USERS_KEY   = 'taint_users_v1';
 const LOCAL_SESSION_KEY = 'taint_session_v1';
 const AUTH_SKIP_COOKIE  = 'taint_skip_auth';
+const COOKIE_ACK_COOKIE = 'taint_cookie_ack';
 
 function cookieSecureSuffix() {
   return location.protocol === 'https:' ? '; Secure' : '';
@@ -3483,6 +3759,29 @@ function hasAuthSkip() {
   } catch {
     return false;
   }
+}
+function hasCookieAck() {
+  try {
+    return getFirstPartyCookie(COOKIE_ACK_COOKIE) === '1' || localStorage.getItem(COOKIE_ACK_COOKIE) === '1';
+  } catch {
+    return false;
+  }
+}
+function setCookieAck(value=true) {
+  try {
+    if (value) {
+      setFirstPartyCookie(COOKIE_ACK_COOKIE, '1', 365);
+      localStorage.setItem(COOKIE_ACK_COOKIE, '1');
+    } else {
+      deleteFirstPartyCookie(COOKIE_ACK_COOKIE);
+      localStorage.removeItem(COOKIE_ACK_COOKIE);
+    }
+  } catch {}
+}
+function syncCookieConsent() {
+  const banner = document.getElementById('cookieConsent');
+  if (!banner) return;
+  banner.classList.toggle('hidden', hasCookieAck());
 }
 function userInitials(user) {
   if (!user) return 'GU';
@@ -3540,7 +3839,7 @@ function normalizeAuthEmail(email) {
 
 async function authSignUp(name, email, password) {
   if (supabaseClient) {
-    const options = { data:{ name, acknowledgement:'TAINT account created. Password is never sent by email.' } };
+    const options = { data:{ name, username:name, acknowledgement:'TAINT account created. Password is never sent by email.' } };
     const redirectTo = authRedirectTo();
     if (redirectTo) options.emailRedirectTo = redirectTo;
     const {data,error} = await supabaseClient.auth.signUp({
@@ -3549,7 +3848,7 @@ async function authSignUp(name, email, password) {
       options
     });
     if (error) throw new Error(authFriendlyError(error, 'email'));
-    if (!data.user) throw new Error('Supabase did not create the account. Check Email provider settings in Authentication → Providers.');
+    if (!data.user) throw new Error('Email/password sign-up is not active in Supabase. Enable Email in Authentication -> Providers and configure SMTP for confirmation emails.');
     const pendingConfirmation = !data.session;
     if (pendingConfirmation) notify('Check your email to confirm the account before signing in.', 'success', 'Account created');
     return {id:data.user?.id,name,email,provider:'supabase',pendingConfirmation};
@@ -3590,9 +3889,15 @@ async function authSendPasswordReset(email) {
 }
 async function authAccountExistsForReset(email) {
   if (authSettings().validateResetEmail === false) return true;
+  const checked = validateEmailValue(email);
+  if (!checked.ok) return false;
   try {
-    const { data, error } = await supabaseClient.rpc('taint_account_email_exists', { p_email: email });
-    if (error) throw error;
+    const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/rpc/taint_account_email_exists`, {
+      method : 'POST',
+      headers: await SB_AUTH_HEADERS(),
+      body   : JSON.stringify({ p_email: checked.value })
+    }, { label:'account validation', timeout:9000, retries:1 });
+    const data = await res.json();
     return data === true;
   } catch (error) {
     console.warn('TAINT reset email validation failed:', error.message || error);
@@ -3679,6 +3984,7 @@ function updateAuthUI(user) {
   if(details){ details.textContent=isGuest?'Sign in to view details':'Account details'; details.disabled=false; }
   if(logout){ logout.textContent=isGuest?'Sign In / Sign Up':'Logout'; }
   syncAdminVisibility();
+  refreshAllRecentCalculations();
 }
 
 function setAccountMenu(open) {
@@ -3737,7 +4043,7 @@ function setAuthMode(mode) {
   if (confirm)    confirm.style.display    = isReset ? '' : 'none';
   if (passInput) {
     passInput.autocomplete = (isSignup || isReset) ? 'new-password' : 'current-password';
-    passInput.placeholder  = isReset ? 'New password (min 8 chars)' : isSignup ? 'Create a password (min 8 chars)' : 'Your password';
+    passInput.placeholder  = isReset ? 'Upper/lower/number/symbol, 8-72 chars' : isSignup ? 'Upper/lower/number/symbol, 8-72 chars' : 'Your password';
   }
   if (passLabel) passLabel.textContent = isReset ? 'New password' : 'Password';
   if (confirmInput && !isReset) confirmInput.value = '';
@@ -3752,6 +4058,45 @@ function setAuthMode(mode) {
 document.querySelectorAll('.auth-tab').forEach(tab=>{
   tab.addEventListener('click',()=> setAuthMode(tab.dataset.tab));
 });
+
+function validateAuthForm(mode, { name='', email='', password='', confirmPassword='' }={}) {
+  const emailCheck = mode === 'reset' ? { ok:true, value:email } : validateEmailValue(email);
+  if (!emailCheck.ok) {
+    setFieldInvalid(document.getElementById('authEmail'), emailCheck.message);
+    showAuthError(emailCheck.message);
+    notify(emailCheck.message, 'warn', 'Account');
+    return null;
+  }
+  const normalizedEmail = emailCheck.value;
+  if (mode === 'forgot') return { email:normalizedEmail };
+
+  const username = mode === 'signup' ? validateUsernameValue(name) : { ok:true, value:name };
+  if (!username.ok) {
+    setFieldInvalid(document.getElementById('authName'), username.message);
+    showAuthError(username.message);
+    notify(username.message, 'warn', 'Account');
+    return null;
+  }
+
+  const passwordCheck = validatePasswordValue(password, {
+    strong: mode === 'signup' || mode === 'reset',
+    label : mode === 'reset' ? 'New password' : 'Password'
+  });
+  if (!passwordCheck.ok) {
+    setFieldInvalid(document.getElementById('authPassword'), passwordCheck.message);
+    showAuthError(passwordCheck.message);
+    notify(passwordCheck.message, 'warn', 'Account');
+    return null;
+  }
+  if (mode === 'reset' && password !== confirmPassword) {
+    const message = 'Passwords do not match.';
+    setFieldInvalid(document.getElementById('authConfirmPassword'), message);
+    showAuthError(message);
+    notify(message, 'warn', 'Account');
+    return null;
+  }
+  return { name:username.value, email:normalizedEmail, password };
+}
 
 document.addEventListener('click', async e => {
   if (e.target?.id !== 'authSubmit') return;
@@ -3768,12 +4113,12 @@ document.addEventListener('click', async e => {
   showAuthError(''); showAuthSuccess('');
 
   if (authMode === 'forgot') {
-    if(!email){ showAuthError('Please enter your email address.'); return; }
-    if(!isValidEmail(email)){ showAuthError('Please enter a valid email address.'); setFieldInvalid(document.getElementById('authEmail'), 'Invalid email.'); return; }
+    const checked = validateAuthForm('forgot', { email });
+    if (!checked) return;
     btn.disabled=true; btn.textContent='Sending…';
     try {
-      await authSendPasswordReset(email);
-      showAuthSuccess(`A secure password reset email has been sent to ${email}. Follow the link, then create a new password here.`);
+      await authSendPasswordReset(checked.email);
+      showAuthSuccess(`A secure password reset email has been sent to ${checked.email}. Follow the link, then create a new password here.`);
       notify('Password reset email sent.', 'success', 'Account');
     } catch(err){ showAuthError(err.message); }
     finally{ btn.disabled=false; btn.textContent=authSubmitText(); }
@@ -3781,11 +4126,11 @@ document.addEventListener('click', async e => {
   }
 
   if (authMode === 'reset') {
-    if(pass.length<8){ showAuthError('New password must be at least 8 characters.'); setFieldInvalid(document.getElementById('authPassword'), 'Use 8 or more characters.'); return; }
-    if(pass !== confirmPass){ showAuthError('Passwords do not match.'); setFieldInvalid(document.getElementById('authConfirmPassword'), 'Passwords do not match.'); return; }
+    const checked = validateAuthForm('reset', { password:pass, confirmPassword:confirmPass });
+    if (!checked) return;
     btn.disabled=true; btn.textContent='Updating…';
     try {
-      await authUpdateRecoveredPassword(pass);
+      await authUpdateRecoveredPassword(checked.password);
       authRecoveryMode = false;
       clearAuthUrlTokens();
       rememberAuthSkip(false);
@@ -3798,17 +4143,15 @@ document.addEventListener('click', async e => {
     return;
   }
 
-  if(!email||!pass){ showAuthError('Please enter your email and password.'); return; }
-  if(!isValidEmail(email)){ showAuthError('Please enter a valid email address.'); setFieldInvalid(document.getElementById('authEmail'), 'Invalid email.'); return; }
-  if(authMode==='signup' && name.length < 2){ showAuthError('Please enter your name.'); setFieldInvalid(document.getElementById('authName'), 'Name is required.'); return; }
-  if(authMode==='signup'&&pass.length<8){ showAuthError('Password must be at least 8 characters.'); setFieldInvalid(document.getElementById('authPassword'), 'Use 8 or more characters.'); return; }
+  const checked = validateAuthForm(authMode, { name, email, password:pass });
+  if (!checked) return;
   btn.disabled=true; btn.textContent=authMode==='signup'?'Creating…':'Signing in…';
   try {
-    currentUser=authMode==='signup'?await authSignUp(name,email,pass):await authSignIn(email,pass);
+    currentUser=authMode==='signup'?await authSignUp(checked.name,checked.email,checked.password):await authSignIn(checked.email,checked.password);
     if (currentUser?.pendingConfirmation) {
       currentUser = null;
       updateAuthUI(null);
-      showAuthSuccess(`Acknowledgement sent to ${email}. Check your email to confirm the account, then sign in. Your password is never emailed.`);
+      showAuthSuccess(`Acknowledgement sent to ${checked.email}. Check your email to confirm the account, then sign in. Your password is never emailed.`);
       return;
     }
     rememberAuthSkip(false);
@@ -3840,7 +4183,16 @@ document.addEventListener('click', e => {
 document.addEventListener('click', e => {
   if (e.target?.id !== 'cookieClearBtn') return;
   rememberAuthSkip(false);
+  setCookieAck(false);
+  syncCookieConsent();
   notify('TAINT guest preference cookie cleared.', 'success', 'Cookies');
+});
+
+document.addEventListener('click', e => {
+  if (e.target?.id !== 'cookieAcceptBtn') return;
+  setCookieAck(true);
+  syncCookieConsent();
+  notify('Cookie preference saved.', 'success', 'Cookies');
 });
 
 document.addEventListener('click', e => {
@@ -4164,9 +4516,18 @@ function calculateWorkplace() {
     total_tco2e      : total,
     per_capita_tco2e : perEmp,
     grade            : g,
-    inputs           : { sector, employees, days, organisation: wpOrgName },
+    inputs           : { ...collectFormFields('#workplaceSection'), sector, employees, days, organisation: wpOrgName },
     results          : window._wpResult
   }, 'functional');
+  saveRecentRecord('workplace', {
+    city: city().name,
+    title: wpOrgName || 'Workplace profile',
+    detail: `${employees} employee(s) · Grade ${g}`,
+    value: total,
+    unit: 't/yr',
+    grade: g,
+    payload: window._wpResult
+  });
   if (wpOrgName) {
     sbCreateBusinessEntity({
       entity_type : 'workplace',
@@ -4493,9 +4854,18 @@ function calculateHome(){
     total_tco2e      : total,
     per_capita_tco2e : perCap,
     grade            : g,
-    inputs           : { occupants, diet: hmS('hmDiet') },
+    inputs           : { ...collectFormFields('#homeSection'), occupants, diet: hmS('hmDiet') },
     results          : window._hmResult
   }, 'functional');
+  saveRecentRecord('home', {
+    city: city().name,
+    title: 'Home profile',
+    detail: `${occupants} occupant(s) · Grade ${g}`,
+    value: total,
+    unit: 't/yr',
+    grade: g,
+    payload: window._hmResult
+  });
   sbUploadJsonArtifact('household-carbon-profile', window._hmResult, { profileType:'household', city:city().name });
 }
 
@@ -4683,6 +5053,7 @@ function setMode(mode) {
   if (mode === 'taint') mtImportSavedModeResults();
   if (mode === 'buy') tbInit();
   if (mode === 'admin') updateAdminStats();
+  if (RECENT_MODE_CONFIG[mode]) refreshRecentCalculations(mode);
   syncAdminVisibility();
 }
 
@@ -4934,6 +5305,7 @@ function mtRenderResults() {
 
   document.getElementById('mtTipsList').innerHTML = tipsPool.map((t,i)=>
     `<div class="wp-tip-row"><span class="wp-tip-pct">${i+1}.</span><span>${t.tip}</span></div>`).join('');
+  window._mtResult = { total, commute, workplace, perCapHome, grade:g, saved:{ ...mtSaved } };
 }
 
 /* ── Step 5: Sync site carbon display ── */
@@ -4977,6 +5349,27 @@ function mtCalculateProfile() {
 
   const saveBtn = document.getElementById('mtSaveBtn');
   if (saveBtn) saveBtn.disabled = false;
+  const result = window._mtResult || {};
+  sbPost('carbon_profiles', {
+    profile_type     : 'my_taint',
+    city_key         : currentCityKey,
+    city_name        : city().name,
+    total_tco2e      : result.total || 0,
+    per_capita_tco2e : result.total || 0,
+    grade            : result.grade || null,
+    inputs           : collectFormFields('#taintSection'),
+    results          : result
+  }, 'functional');
+  saveRecentRecord('taint', {
+    city: city().name,
+    title: 'My Taint profile',
+    detail: result.grade ? `Grade ${result.grade}` : 'Combined profile',
+    value: result.total || 0,
+    unit: 't/yr',
+    grade: result.grade || '',
+    payload: result
+  });
+  sbUploadJsonArtifact('my-taint-carbon-profile', result, { profileType:'my_taint', city:city().name });
   notify('My Taint carbon footprint calculated.', 'success', 'My Taint');
 }
 
@@ -5474,13 +5867,64 @@ function tbRenderGrid(products) {
       </div>
       <div class="tb-commission">${p.commission}</div>
       <div class="tb-buy-row">${buyBtns}</div>
+      <button class="tb-owned-btn" type="button" onclick="tbRecordProductStatus('bought','${p.id}')">Mark Bought</button>
     </div>`;
   }).join('');
   document.getElementById('tbCount').textContent = `${products.length} product${products.length!==1?'s':''}`;
 }
 
 /* ── Track clicks (analytics stub) ── */
+function tbProductById(productId) {
+  return TAINT_PRODUCTS.find(p => p.id === productId) || null;
+}
+
+function tbStoreLocalStatus(record) {
+  const row = {
+    id: record.id || `buy-${Date.now()}`,
+    mode:'buy',
+    at: record.at || new Date().toISOString(),
+    city: record.city || city().name,
+    title: record.productName || record.product_id || 'Taint Buy product',
+    detail: `${record.status === 'bought' ? 'Bought' : 'Checked out'}${record.platform ? ` · ${record.platform}` : ''}`,
+    value: Number(record.priceNum || 0),
+    unit:'INR',
+    payload: record
+  };
+  const existing = readLocalRecent('buy').filter(item => item.id !== row.id);
+  writeLocalRecent('buy', [row, ...existing]);
+  renderRecentCalculations('buy');
+}
+
+function tbRecordProductStatus(status, productId, platform='manual') {
+  const product = tbProductById(productId);
+  if (!product) return;
+  const normalizedStatus = status === 'bought' ? 'bought' : 'checked_out';
+  const record = {
+    product_id : product.id,
+    productName: product.name,
+    platform,
+    status: normalizedStatus,
+    priceNum: product.priceNum || 0,
+    city: city().name,
+    at: new Date().toISOString()
+  };
+  tbStoreLocalStatus(record);
+  sbPost('product_purchases', {
+    product_id  : product.id,
+    product_name: product.name,
+    platform,
+    status      : normalizedStatus,
+    price_num   : product.priceNum || 0,
+    quantity    : 1,
+    city_key    : currentCityKey,
+    city_name   : city().name,
+    metadata    : { eco:product.eco, saving:product.saving, tags:product.tags, source:'taint_buy' }
+  }, 'functional');
+  if (normalizedStatus === 'bought') notify(`${product.name} added to your bought list.`, 'success', 'Taint Buy');
+}
+
 function tbTrack(platform, productId) {
+  const product = tbProductById(productId);
   try {
     const key = `tb_click_${Date.now()}`;
     localStorage.setItem(key, JSON.stringify({ platform, productId, city: city().name, ts: new Date().toISOString() }));
@@ -5489,8 +5933,10 @@ function tbTrack(platform, productId) {
     platform,
     product_id: productId,
     city_key  : currentCityKey,
-    city_name : city().name
+    city_name : city().name,
+    metadata  : product ? { productName:product.name, priceNum:product.priceNum || 0 } : {}
   }, 'functional');
+  tbRecordProductStatus('checked_out', productId, platform);
 }
 
 /* ── Filter + sort ── */
