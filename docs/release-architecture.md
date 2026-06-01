@@ -42,6 +42,8 @@ Configure these once in both repositories where applicable:
 9. Enable prevent self-review if available.
 10. Limit `production` deployment branches to `main`.
 
+For `sabarivasantkmech-blip/taint-prod`, enable GitHub Pages once in Settings -> Pages by setting Build and deployment Source to `GitHub Actions`. Until that is enabled, the production workflow validates the bundle and skips the deploy step with a notice instead of failing red.
+
 ## Dev Repository Secrets And Variables
 
 Add these to `sabarivasantkmech-blip/taint`:
