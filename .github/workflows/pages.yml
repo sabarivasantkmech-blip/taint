@@ -1,9 +1,7 @@
-name: Deploy Production Pages
+name: Deploy Dev Pages
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -13,13 +11,16 @@ permissions:
   id-token: write
 
 concurrency:
-  group: production-pages
-  cancel-in-progress: false
+  group: dev-pages
+  cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Validate production bundle
+  deploy-dev:
+    name: Deploy dev site
     runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,66 +34,26 @@ jobs:
         run: |
           node --check assets/js/app.js
           node --check assets/js/supabase-runtime-config.js
-
-      - name: Assert production Supabase config
-        shell: bash
-        run: |
-          grep -q "environment: 'prod'" supabase-config.js
-          grep -q "https://oavkdvuvlupawxhjtowh.supabase.co" supabase-config.js
-
-      - name: Prepare static site bundle
-        shell: bash
-        run: |
-          rm -rf _site
-          mkdir -p _site
-          cp index.html supabase-config.js _site/
-          if [ -f CNAME ]; then cp CNAME _site/; fi
-          cp -R assets vendor _site/
-          touch _site/.nojekyll
-          test ! -e _site/taint_supabase_schema.sql
-          test ! -e _site/README.md
-
-      - name: Upload production candidate
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-site-candidate
-          path: _site
-          if-no-files-found: error
-
-  production-approval:
-    name: Production release approval
-    needs: validate
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://sabarivasantkmech-blip.github.io/taint/
-    steps:
-      - name: Approval recorded
-        run: echo "Production deployment approved for $GITHUB_SHA"
-
-  deploy:
-    name: Deploy GitHub Pages
-    needs: production-approval
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          node --check scripts/write-supabase-config.mjs
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Download approved production candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: production-site-candidate
-          path: _site
+      - name: Prepare dev static site bundle
+        shell: bash
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp index.html _site/
+          cp -R assets vendor _site/
+          node scripts/write-supabase-config.mjs _site/supabase-config.js
+          touch _site/.nojekyll
+          grep -q '"environment": "dev"' _site/supabase-config.js
+          grep -q 'https://pywjwsrjzgkvgplkxdry.supabase.co' _site/supabase-config.js
+          test ! -e _site/taint_supabase_schema.sql
+          test ! -e _site/README.md
 
-      - name: Upload static site
+      - name: Upload dev site
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site

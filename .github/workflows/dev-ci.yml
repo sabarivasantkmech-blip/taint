@@ -2,7 +2,7 @@ name: Dev CI
 
 on:
   push:
-    branches: [develop]
+    branches: [main, develop]
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
@@ -31,17 +31,18 @@ jobs:
         run: |
           node --check assets/js/app.js
           node --check assets/js/supabase-runtime-config.js
+          node --check scripts/write-supabase-config.mjs
 
       - name: Prepare dev static bundle
         shell: bash
         run: |
           rm -rf _site
           mkdir -p _site
-          cp index.html supabase-config.js _site/
+          cp index.html _site/
           cp -R assets vendor _site/
           touch _site/.nojekyll
-          perl -0pi -e "s/environment: 'prod'/environment: 'dev'/" _site/supabase-config.js
-          grep -q "environment: 'dev'" _site/supabase-config.js
+          node scripts/write-supabase-config.mjs _site/supabase-config.js
+          grep -q '"environment": "dev"' _site/supabase-config.js
           grep -q "https://pywjwsrjzgkvgplkxdry.supabase.co" _site/supabase-config.js
           test ! -e _site/taint_supabase_schema.sql
           test ! -e _site/README.md

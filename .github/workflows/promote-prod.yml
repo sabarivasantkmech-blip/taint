@@ -1,59 +1,139 @@
-name: Promote Dev To Prod
+name: Promote Dev Bundle To Prod Repo
 
 on:
   workflow_dispatch:
     inputs:
-      source_branch:
-        description: Branch to promote into production
+      prod_repo:
+        description: Production repository in owner/name form
         required: true
-        default: develop
+        default: sabarivasantkmech-blip/taint-prod
+      prod_site_url:
+        description: Production app URL for Supabase Auth redirects
+        required: true
+        default: https://sabarivasantkmech-blip.github.io/taint-prod/index.html
       release_title:
         description: Release PR title
         required: true
-        default: Release dev to production
+        default: Release dev bundle to production
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
-  create-release-pr:
-    name: Create production release PR
+  promote:
+    name: Build prod bundle and open prod PR
     runs-on: ubuntu-latest
+    env:
+      PROD_REPO_TOKEN: ${{ secrets.PROD_REPO_TOKEN }}
+      PROD_SUPABASE_URL: ${{ vars.PROD_SUPABASE_URL }}
+      PROD_SUPABASE_KEY: ${{ vars.PROD_SUPABASE_PUBLISHABLE_KEY }}
     steps:
-      - name: Create pull request
-        uses: actions/github-script@v7
+      - name: Checkout dev source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          script: |
-            const source = core.getInput('source_branch');
-            const title = core.getInput('release_title');
-            const { owner, repo } = context.repo;
-            const existing = await github.paginate(github.rest.pulls.list, {
-              owner,
-              repo,
-              state: 'open',
-              base: 'main',
-              head: `${owner}:${source}`,
-            });
-            if (existing.length) {
-              core.notice(`Release PR already exists: ${existing[0].html_url}`);
-              return;
-            }
-            const body = [
-              'Production release request.',
-              '',
-              '- Source branch: `' + source + '`',
-              '- Target branch: `main`',
-              '- Required checks: Dev CI and production bundle validation',
-              '- Deployment gate: GitHub Environment `production` approval after merge',
-            ].join('\n');
-            const pr = await github.rest.pulls.create({
-              owner,
-              repo,
-              title,
-              head: source,
-              base: 'main',
-              body,
-              maintainer_can_modify: true,
-            });
-            core.notice(`Created release PR: ${pr.data.html_url}`);
+          node-version: '22'
+
+      - name: Validate promotion configuration
+        shell: bash
+        run: |
+          test -n "$PROD_REPO_TOKEN"
+          test -n "$PROD_SUPABASE_URL"
+          test -n "$PROD_SUPABASE_KEY"
+          node --check assets/js/app.js
+          node --check assets/js/supabase-runtime-config.js
+          node --check scripts/write-supabase-config.mjs
+
+      - name: Build production static bundle
+        shell: bash
+        env:
+          TAINT_ENV: prod
+          TAINT_PROD_SUPABASE_URL: ${{ vars.PROD_SUPABASE_URL }}
+          TAINT_PROD_SUPABASE_KEY: ${{ vars.PROD_SUPABASE_PUBLISHABLE_KEY }}
+          TAINT_PROD_SITE_URL: ${{ inputs.prod_site_url }}
+          TAINT_ADMIN_OWNER_EMAILS: ${{ vars.TAINT_ADMIN_OWNER_EMAILS }}
+        run: |
+          rm -rf _prod_site
+          mkdir -p _prod_site
+          cp index.html _prod_site/
+          cp -R assets vendor _prod_site/
+          node scripts/write-supabase-config.mjs _prod_site/supabase-config.js
+          touch _prod_site/.nojekyll
+          grep -q '"environment": "prod"' _prod_site/supabase-config.js
+          grep -q "$PROD_SUPABASE_URL" _prod_site/supabase-config.js
+          test ! -e _prod_site/taint_supabase_schema.sql
+          test ! -e _prod_site/README.md
+
+      - name: Ensure production repository exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PROD_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${{ inputs.prod_repo }}"
+          owner="${repo%%/*}"
+          name="${repo##*/}"
+          status="$(curl -sS -o /tmp/prod-repo.json -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$repo")"
+          if [ "$status" = "200" ]; then
+            echo "Production repository $repo already exists."
+            exit 0
+          fi
+          if [ "$status" != "404" ]; then
+            cat /tmp/prod-repo.json
+            exit 1
+          fi
+          curl -sSf \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/user/repos" \
+            -d "{\"name\":\"$name\",\"private\":false,\"description\":\"TAINT isolated production deployment\",\"auto_init\":true}" \
+            > /tmp/prod-repo-created.json
+          grep -q "\"full_name\": \"$owner/$name\"" /tmp/prod-repo-created.json
+
+      - name: Clone production repository
+        shell: bash
+        run: |
+          git clone "https://x-access-token:${PROD_REPO_TOKEN}@github.com/${{ inputs.prod_repo }}.git" prod-repo
+
+      - name: Push release branch to production repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd prod-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="release/dev-${GITHUB_SHA::7}"
+          git checkout -B "$branch"
+          shopt -s dotglob nullglob
+          for path in * .[^.]*; do
+            if [ "$path" != ".git" ] && [ "$path" != "CNAME" ]; then
+              rm -rf "$path"
+            fi
+          done
+          cp -R ../prod-repo-template/.github .
+          cp ../prod-repo-template/README.md README.md
+          cp -R ../_prod_site/. .
+          git add .
+          git commit -m "Promote dev bundle ${GITHUB_SHA::7}"
+          git push --force origin "$branch"
+          echo "PROD_BRANCH=$branch" >> "$GITHUB_ENV"
+
+      - name: Open production release PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PROD_REPO_TOKEN }}
+        run: |
+          gh pr create \
+            --repo "${{ inputs.prod_repo }}" \
+            --base main \
+            --head "$PROD_BRANCH" \
+            --title "${{ inputs.release_title }}" \
+            --body "Production release generated from dev commit $GITHUB_SHA. Review the static bundle, then merge to trigger the production Pages approval gate."

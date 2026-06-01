@@ -1,37 +1,60 @@
 # Release Architecture
 
-This repo now supports a dev-to-prod release path with approval gates.
+This project uses separate repositories for development and production so frontend bundles, Supabase projects, approvals, and audit trails do not overlap.
 
-## Recommended Isolation Model
+## Repository Model
 
-For the strongest isolation, use two repositories:
+- `sabarivasantkmech-blip/taint` is the development repository. It stores source code, SQL migrations, docs, the dev Supabase config, and dev Pages deployment.
+- `sabarivasantkmech-blip/taint-prod` is the production repository. It stores only the production static bundle, production runtime config, and production Pages workflow.
+- `prod-repo-template/` contains the files needed to bootstrap or repair the production repository workflow.
 
-- `taint-dev` for day-to-day development, dev Supabase, and preview artifacts.
-- `taint-prod` for production Pages, production Supabase, and the custom domain.
+## Code Migration Flow
 
-This current repo can still work as the production repo. A separate production repo is useful when you want repository-level isolation, separate write permissions, and a production-only audit trail.
-
-## Branch Flow In This Repo
-
-- `develop` is the dev integration branch.
-- `main` is the production branch.
-- `Dev CI` runs for `develop` pushes and PRs.
-- `Promote Dev To Prod` creates a `develop` -> `main` release PR.
-- `Deploy Production Pages` validates `main`, waits for `production` environment approval, then deploys GitHub Pages.
+1. Develop and test in `sabarivasantkmech-blip/taint`.
+2. Run the manual `Promote Dev Bundle To Prod Repo` workflow from the dev repository.
+3. The workflow creates `sabarivasantkmech-blip/taint-prod` if it does not exist and the token has repository creation permission.
+4. The workflow generates a production bundle using `PROD_SUPABASE_URL`, `PROD_SUPABASE_PUBLISHABLE_KEY`, and the production site URL.
+5. The workflow pushes that bundle plus the production workflow template to a `release/dev-<sha>` branch in `sabarivasantkmech-blip/taint-prod`.
+6. Review and merge the release PR in the production repository.
+7. The production repository validates the bundle and waits for the `production` Environment approval before deploying Pages.
 
 ## Required GitHub Settings
 
-Configure these once in GitHub:
+Configure these once in both repositories where applicable:
 
 1. Settings -> Branches -> protect `main`.
 2. Require pull request before merging.
 3. Require at least one approval.
-4. Require status checks before merging: `Static checks and dev artifact` and `Validate production bundle`.
-5. Restrict direct pushes to `main`.
-6. Settings -> Environments -> create `production`.
-7. Add required reviewer(s) for `production`.
-8. Enable prevent self-review if available.
-9. Limit `production` deployment branches to `main`.
+4. In the dev repo, require `Static checks and dev artifact`.
+5. In the prod repo, require `Validate production static bundle`.
+6. Restrict direct pushes to `main`.
+7. Settings -> Environments -> create `production` in the prod repo.
+8. Add required reviewer(s) for `production`.
+9. Enable prevent self-review if available.
+10. Limit `production` deployment branches to `main`.
+
+## Dev Repository Secrets And Variables
+
+Add these to `sabarivasantkmech-blip/taint`:
+
+- Secret `PROD_REPO_TOKEN`: a fine-grained GitHub token with contents write and pull request write access to `sabarivasantkmech-blip/taint-prod`. If the prod repo does not exist yet, the token also needs repository creation permission for the owner account.
+- Variable `PROD_SUPABASE_URL`: `https://oavkdvuvlupawxhjtowh.supabase.co`.
+- Variable `PROD_SUPABASE_PUBLISHABLE_KEY`: production Supabase publishable key.
+- Variable `TAINT_ADMIN_OWNER_EMAILS`: comma-separated owner emails for production admin access.
+
+## Production Repository Contents
+
+The production repository should contain only:
+
+- `index.html`
+- `supabase-config.js`
+- `assets/`
+- `vendor/`
+- `.nojekyll`
+- `.github/workflows/pages.yml`
+- optional `CNAME`
+
+SQL files, architecture docs, local screenshots, and development notes stay in the dev repository.
 
 GitHub documents environment approvals and required reviewers in the deployment environments guide.
 
@@ -54,7 +77,7 @@ For GitHub Pages DNS:
 - Apex `@` A records -> GitHub Pages IPs from current GitHub docs
 - Enable Enforce HTTPS after GitHub verifies the domain
 
-After DNS is correct, add a root `CNAME` file containing only the chosen domain and update Supabase Auth URL Configuration:
+After DNS is correct, add a root `CNAME` file in the production repository containing only the chosen domain and update Supabase Auth URL Configuration:
 
 - Site URL: `https://www.taintcarbon.in/index.html`
 - Redirect URL: `https://www.taintcarbon.in/**`
@@ -64,4 +87,6 @@ After DNS is correct, add a root `CNAME` file containing only the chosen domain 
 - Dev Supabase: `pywjwsrjzgkvgplkxdry`
 - Prod Supabase: `oavkdvuvlupawxhjtowh`
 
-The production Pages bundle uses `environment: 'prod'`. The dev CI artifact rewrites the copied bundle to `environment: 'dev'` without changing source files.
+The development Pages bundle uses `environment: 'dev'` and `https://pywjwsrjzgkvgplkxdry.supabase.co`.
+
+The production Pages bundle uses `environment: 'prod'` and `https://oavkdvuvlupawxhjtowh.supabase.co`.

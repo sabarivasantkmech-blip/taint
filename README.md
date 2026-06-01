@@ -29,7 +29,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 3. Run `supabase_business_storage_migration.sql`.
 4. Run `supabase_sensitive_data_encryption.sql`.
 5. Run `supabase_security_advisor_followup.sql`, `supabase_policy_performance_followup.sql`, then `supabase_regression_data_followup.sql`.
-6. Paste your Project URL and anon or publishable public key into the `dev` environment in `supabase-config.js`. The checked-in project is treated as development; fill the `prod` environment only when a production Supabase project is ready.
+6. Paste your Project URL and anon or publishable public key into the `dev` environment in `supabase-config.js`. The checked-in project is treated as development; production settings are supplied only through GitHub repository variables during release promotion.
 7. Open the app and run `await window.taintCheckSupabase()` in the browser console.
 
 Do not put the Supabase `service_role` key in any front-end file.
@@ -73,6 +73,8 @@ For production email delivery, configure Supabase Authentication -> SMTP setting
 
 ## Release Flow
 
-Use `develop` for dev integration and `main` for production. The workflows under `.github/workflows/` validate dev changes, create a `develop` -> `main` production release PR, and deploy GitHub Pages only after the `production` GitHub Environment is approved.
+This repository is the development source of truth. Its checked-in `supabase-config.js` points only to the development Supabase project, and the `Deploy Dev Pages` workflow publishes the dev app.
+
+Production is isolated in a separate repository, `sabarivasantkmech-blip/taint-prod`. The manual `Promote Dev Bundle To Prod Repo` workflow can create that repo when `PROD_REPO_TOKEN` has permission, builds a production static bundle with production Supabase settings, pushes it to a release branch in the prod repository, and opens a production release PR. The prod repository deploys GitHub Pages only after the `production` GitHub Environment is approved.
 
 See `docs/release-architecture.md` for the full approval, custom domain, and dev/prod Supabase setup.
