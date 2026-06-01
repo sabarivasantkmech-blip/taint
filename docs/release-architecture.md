@@ -12,11 +12,20 @@ This project uses separate repositories for development and production so fronte
 
 1. Develop and test in `sabarivasantkmech-blip/taint`.
 2. Run the manual `Promote Dev Bundle To Prod Repo` workflow from the dev repository.
-3. The workflow creates `sabarivasantkmech-blip/taint-prod` if it does not exist and the token has repository creation permission.
+3. The workflow uses `sabarivasantkmech-blip/taint-prod` as the production repository.
 4. The workflow generates a production bundle using `PROD_SUPABASE_URL`, `PROD_SUPABASE_PUBLISHABLE_KEY`, and the production site URL.
 5. The workflow pushes that bundle plus the production workflow template to a `release/dev-<sha>` branch in `sabarivasantkmech-blip/taint-prod`.
 6. Review and merge the release PR in the production repository.
 7. The production repository validates the bundle and waits for the `production` Environment approval before deploying Pages.
+
+## Dev Branch Model
+
+The dev repository does not need both `main` and `develop`.
+
+- `main` is the dev trunk branch and deploys the dev Pages app.
+- Feature and fix branches open PRs into `main`.
+- Production releases are not made by merging dev `main` into a production branch. They are made by generating a bundle and opening a PR in `sabarivasantkmech-blip/taint-prod`.
+- The old `develop` branch can remain as a dormant branch for history, but it is not required by CI or release workflows.
 
 ## Required GitHub Settings
 
@@ -37,7 +46,7 @@ Configure these once in both repositories where applicable:
 
 Add these to `sabarivasantkmech-blip/taint`:
 
-- Secret `PROD_REPO_TOKEN`: a fine-grained GitHub token with contents write and pull request write access to `sabarivasantkmech-blip/taint-prod`. If the prod repo does not exist yet, the token also needs repository creation permission for the owner account.
+- Secret `PROD_REPO_TOKEN`: a fine-grained GitHub token with contents write and pull request write access to `sabarivasantkmech-blip/taint-prod`.
 - Variable `PROD_SUPABASE_URL`: `https://oavkdvuvlupawxhjtowh.supabase.co`.
 - Variable `PROD_SUPABASE_PUBLISHABLE_KEY`: production Supabase publishable key.
 - Variable `TAINT_ADMIN_OWNER_EMAILS`: comma-separated owner emails for production admin access.

@@ -75,6 +75,8 @@ For production email delivery, configure Supabase Authentication -> SMTP setting
 
 This repository is the development source of truth. Its checked-in `supabase-config.js` points only to the development Supabase project, and the `Deploy Dev Pages` workflow publishes the dev app.
 
-Production is isolated in a separate repository, `sabarivasantkmech-blip/taint-prod`. The manual `Promote Dev Bundle To Prod Repo` workflow can create that repo when `PROD_REPO_TOKEN` has permission, builds a production static bundle with production Supabase settings, pushes it to a release branch in the prod repository, and opens a production release PR. The prod repository deploys GitHub Pages only after the `production` GitHub Environment is approved.
+Use `main` as the dev trunk branch in this repository. Feature or fix branches should open PRs into dev `main`; a permanent `develop` branch is optional and not required by the release flow.
+
+Production is isolated in a separate repository, `sabarivasantkmech-blip/taint-prod`. The manual `Promote Dev Bundle To Prod Repo` workflow builds a production static bundle with production Supabase settings, pushes it to a release branch in the prod repository, and opens a production release PR. The prod repository deploys GitHub Pages only after the `production` GitHub Environment is approved.
 
 See `docs/release-architecture.md` for the full approval, custom domain, and dev/prod Supabase setup.
