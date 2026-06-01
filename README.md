@@ -70,3 +70,9 @@ Forgot password uses Supabase's secure reset-link flow:
 5. User enters a new password in the TAINT reset form.
 
 For production email delivery, configure Supabase Authentication -> SMTP settings and add your deployed URL in Authentication -> URL Configuration.
+
+## Release Flow
+
+Use `develop` for dev integration and `main` for production. The workflows under `.github/workflows/` validate dev changes, create a `develop` -> `main` production release PR, and deploy GitHub Pages only after the `production` GitHub Environment is approved.
+
+See `docs/release-architecture.md` for the full approval, custom domain, and dev/prod Supabase setup.

@@ -1,0 +1,54 @@
+name: Dev CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Static checks and dev artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: JavaScript syntax check
+        run: |
+          node --check assets/js/app.js
+          node --check assets/js/supabase-runtime-config.js
+
+      - name: Prepare dev static bundle
+        shell: bash
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp index.html supabase-config.js _site/
+          cp -R assets vendor _site/
+          touch _site/.nojekyll
+          perl -0pi -e "s/environment: 'prod'/environment: 'dev'/" _site/supabase-config.js
+          grep -q "environment: 'dev'" _site/supabase-config.js
+          grep -q "https://pywjwsrjzgkvgplkxdry.supabase.co" _site/supabase-config.js
+          test ! -e _site/taint_supabase_schema.sql
+          test ! -e _site/README.md
+
+      - name: Upload dev site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-site
+          path: _site
+          if-no-files-found: error
