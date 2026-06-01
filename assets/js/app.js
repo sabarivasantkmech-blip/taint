@@ -3839,7 +3839,7 @@ function normalizeAuthEmail(email) {
 
 async function authSignUp(name, email, password) {
   if (supabaseClient) {
-    const options = { data:{ name, username:name, acknowledgement:'TAINT account created. Password is never sent by email.' } };
+    const options = { data:{ name, username:name, acknowledgement:'Account created. Password is never sent by email.' } };
     const redirectTo = authRedirectTo();
     if (redirectTo) options.emailRedirectTo = redirectTo;
     const {data,error} = await supabaseClient.auth.signUp({
@@ -3848,7 +3848,7 @@ async function authSignUp(name, email, password) {
       options
     });
     if (error) throw new Error(authFriendlyError(error, 'email'));
-    if (!data.user) throw new Error('Email/password sign-up is not active in Supabase. Enable Email in Authentication -> Providers and configure SMTP for confirmation emails.');
+    if (!data.user) throw new Error('Supabase did not create the account. Check Email provider/sign-up settings, or sign in if this email already exists.');
     const pendingConfirmation = !data.session;
     if (pendingConfirmation) notify('Check your email to confirm the account before signing in.', 'success', 'Account created');
     return {id:data.user?.id,name,email,provider:'supabase',pendingConfirmation};
@@ -5822,7 +5822,7 @@ const TB_VENDOR_IMAGES = {
 };
 
 function tbProductImage(product) {
-  return product.image || TB_VENDOR_IMAGES[product.id] || './assets/logo1.png';
+  return product.image || TB_VENDOR_IMAGES[product.id] || tbVendorIcon('example.com');
 }
 
 function tbBuyButton(platform, url, productId) {
@@ -5852,7 +5852,7 @@ function tbRenderGrid(products) {
     <div class="tb-card" data-cat="${p.cat}" data-id="${p.id}">
       <span class="tb-eco-badge ${ecoCls}">Eco ${p.eco}/100</span>
       <div class="tb-card-header">
-        <img class="tb-card-img" src="${tbProductImage(p)}" alt="${p.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='./assets/logo1.png'">
+        <img class="tb-card-img" src="${tbProductImage(p)}" alt="${p.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
         <div class="tb-card-info">
           <div class="tb-card-name">${p.name}</div>
           <div class="tb-card-tagline">${p.tagline}</div>
@@ -6019,7 +6019,7 @@ Pick the 3 that would most reduce MY specific footprint.`
         if (!prod) return '';
         return `<div class="tb-ai-pick">
           <span class="tb-ai-pick-num">#${p.rank}</span>
-          <img class="tb-ai-pick-img" src="${tbProductImage(prod)}" alt="${prod.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='./assets/logo1.png'">
+          <img class="tb-ai-pick-img" src="${tbProductImage(prod)}" alt="${prod.name}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
           <div class="tb-ai-pick-body">
             <div class="tb-ai-pick-name">${p.name || prod.name}</div>
             <div class="tb-ai-pick-why">${p.why}</div>

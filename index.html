@@ -52,12 +52,12 @@
 <!-- Supabase used for global stats (no SDK needed — plain fetch) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.1/dist/umd/supabase.min.js" integrity="sha384-dzQgxMPp/h+N0t5qDf6Bp516wKZr3pXgGMpA7/ZM6tiWkqYo90N060L03dxnZ8Tf" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
-<link rel="stylesheet" href="./assets/css/app.css?v=20260531-data-regression"/>
+<link rel="stylesheet" href="./assets/css/app.css?v=20260601-prod-branding"/>
 
 </head>
 <body>
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
-  <img class="loading-logo" src="./assets/logo1.png" alt="">
+  <div class="loading-ring" aria-hidden="true"></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -71,7 +71,7 @@
     <!-- Brand -->
     <a class="logo" href="#" aria-label="TAINT home">
       <img class="logo-mark" src="./assets/logo1.png" alt="">
-      <span class="logo-text"><span class="logo-name">TAINT</span></span>
+      <span class="logo-text"><span class="logo-name">TAINT</span><span class="logo-city" id="logoCity">Chennai</span></span>
     </a>
 
     <!-- Live clock -->
@@ -133,10 +133,6 @@
 
   <!-- ── LEFT SIDEBAR (desktop) ── -->
   <aside class="app-sidebar" id="appSidebar">
-    <div class="sb-brand">
-      <img class="sb-brand-logo" src="./assets/logo1.png" alt="">
-      <span class="sb-brand-name">TAINT</span>
-    </div>
     <div class="sb-label">City</div>
     <div class="sb-cities" id="sbCities"></div>
     <div class="sb-label" style="margin-top:16px">Mode</div>
@@ -752,7 +748,7 @@
         <div class="src-item"><span class="src-tag ipcc">IPCC</span>IPCC AR6 WGIII, Chapter 10: Transport. Used for transport decarbonisation framing and mitigation benchmarks. <a href="https://www.ipcc.ch/report/ar6/wg3/downloads/" target="_blank" rel="noopener">Source</a></div>
         <div class="src-item"><span class="src-tag ipcc">IPCC</span>IPCC 2006 Guidelines for National Greenhouse Gas Inventories. Used for fuel combustion accounting principles. <a href="https://www.ipcc-nggip.iges.or.jp/public/2006gl/" target="_blank" rel="noopener">Source</a></div>
         <div class="src-item"><span class="src-tag morth">MoRTH</span>Ministry of Road Transport &amp; Highways. Vehicular emission norms and PUC context for India. <a href="https://morth.nic.in/en/vehicular-emission-norms" target="_blank" rel="noopener">Source</a></div>
-        <div class="src-item"><span class="src-tag morth">PUC</span>National Government Services Portal. PUC certificates confirm whether vehicle emissions meet required norms; TAINT uses the PUC value as a maintenance correction, not as a direct CO₂ measurement. <a href="https://services.india.gov.in/service/detail/pollution-under-control-puc-certificate-1" target="_blank" rel="noopener">Source</a></div>
+        <div class="src-item"><span class="src-tag morth">PUC</span>National Government Services Portal. PUC certificates confirm whether vehicle emissions meet required norms; the calculator uses the PUC value as a maintenance correction, not as a direct CO₂ measurement. <a href="https://services.india.gov.in/service/detail/pollution-under-control-puc-certificate-1" target="_blank" rel="noopener">Source</a></div>
       </div>
       <div class="gap-list">
         <div class="gap-item"><b>Gap fixed:</b> grid electricity now cites CEA's CO₂ Baseline Database instead of a state utility-only note, so EV and rail factors have an India power-sector source.</div>
@@ -1669,7 +1665,7 @@
 
   <!-- ── TAINT CONTACT ── -->
   <div class="card tc-card">
-    <div class="card-title">📬 Taint Contact</div>
+    <div class="card-title">📬 Contact</div>
     <div class="tc-grid">
 
       <!-- LEFT: Site carbon footprint (live, from SC tracker) -->
@@ -1739,7 +1735,7 @@
             <input type="email" id="fbEmail" placeholder="your@email.com" maxlength="100"/>
           </div>
           <div class="fb-err-msg" id="fbErr">Please write your feedback before submitting.</div>
-          <button class="wp-calc-btn" id="fbSubmit" type="submit" style="margin:8px 0;padding:10px;font-size:13px">📬 Send to Taint Contact →</button>
+          <button class="wp-calc-btn" id="fbSubmit" type="submit" style="margin:8px 0;padding:10px;font-size:13px">📬 Send Feedback →</button>
         </form>
         <div class="fb-ok" id="fbOk">✅ Thank you! Your feedback has been saved and sent.</div>
         <div class="comments-section">
@@ -1758,9 +1754,9 @@
     <div class="cookie-panel" id="cookiePanel">
       <div>
         <b>Cookie use</b>
-        <span>TAINT stores only the first-party <code>taint_skip_auth</code> preference cookie for guest mode. GitHub Pages hosts the static app; TAINT does not read GitHub account cookies or add tracking cookies.</span>
+        <span>This app stores only the first-party <code>taint_skip_auth</code> preference cookie for guest mode. GitHub Pages hosts the static app; it does not read GitHub account cookies or add tracking cookies.</span>
       </div>
-      <button class="cookie-clear-btn" id="cookieClearBtn" type="button">Clear TAINT Cookie</button>
+      <button class="cookie-clear-btn" id="cookieClearBtn" type="button">Clear Cookie</button>
     </div>
 
     <!-- Contact + data sources strip -->
@@ -1777,7 +1773,7 @@
         <a href="https://morth.nic.in" target="_blank" rel="noopener">MoRTH</a> ·
         <a href="https://aqicn.org" target="_blank" rel="noopener">WAQI</a> ·
         <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OSM</a>
-        &nbsp;·&nbsp; © 2025 TAINT · No ads · No tracking · First-party cookies only.
+        &nbsp;·&nbsp; © 2025 · No ads · No tracking · First-party cookies only.
       </div>
     </div>
   </div>
@@ -1815,17 +1811,17 @@
        3. Settings → API → copy Project URL and anon/public key below
      Leave as-is to run in local-only mode (no global stats).
      ═══════════════════════════════════════════════ -->
-<script src="./supabase-config.js?v=20260531-data-regression"></script>
-<script src="./assets/js/supabase-runtime-config.js?v=20260531-data-regression" defer></script>
+<script src="./supabase-config.js?v=20260601-prod-branding"></script>
+<script src="./assets/js/supabase-runtime-config.js?v=20260601-prod-branding" defer></script>
 
 <!-- ═══════════════════════════════════════════════
      MAIN APPLICATION SCRIPT
      ═══════════════════════════════════════════════ -->
-<script src="./assets/js/app.js?v=20260531-data-regression" defer></script>
+<script src="./assets/js/app.js?v=20260601-prod-branding" defer></script>
 <!-- ── AUTH OVERLAY ── -->
 <div class="auth-overlay hidden" id="authOverlay">
   <div class="auth-card" id="authCard">
-    <div class="auth-brand">🌿 TAINT</div>
+    <div class="auth-brand">Carbon Calculator</div>
     <div class="auth-tagline">Track · Reduce · Act · <span style="color:var(--hi)">Carbon Calculator for India</span></div>
 
     <div class="auth-tabs" id="authTabs">
@@ -1874,13 +1870,13 @@
 
     <button class="auth-skip" id="authSkip">Continue as guest  →</button>
 
-    <p class="auth-note">Your calculations run entirely in your browser. Sign in to sync your profile across devices. TAINT sends confirmation and reset links only; passwords are never emailed.</p>
+    <p class="auth-note">Your calculations run entirely in your browser. Sign in to sync your profile across devices. Confirmation and reset links are sent by email; passwords are never emailed.</p>
   </div>
 </div>
 <div class="cookie-consent hidden" id="cookieConsent" role="dialog" aria-live="polite" aria-label="Cookie notice">
   <div>
     <b>Cookie use</b>
-    <span>TAINT uses one first-party preference cookie for guest mode and this acknowledgement. No ads, no tracking, and no GitHub account cookies are read.</span>
+    <span>This app uses one first-party preference cookie for guest mode and this acknowledgement. No ads, no tracking, and no GitHub account cookies are read.</span>
   </div>
   <button type="button" id="cookieAcceptBtn">Accept</button>
 </div>

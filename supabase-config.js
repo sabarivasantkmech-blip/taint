@@ -3,9 +3,9 @@
 // The anon/public key is designed to be used in browser apps. Do not put the
 // service_role key here.
 window.TAINT_SUPABASE_CONFIG = {
-  environment: 'dev',
-  url: 'https://pywjwsrjzgkvgplkxdry.supabase.co',
-  anonKey: 'sb_publishable_Jn4aL5TQIzd6mPm5JayQeA_M7dzGBn9',
+  environment: 'prod',
+  url: 'https://oavkdvuvlupawxhjtowh.supabase.co',
+  anonKey: 'sb_publishable_TRm1ask_1uhISXxo1wUPFw_1WT7Ky_0',
   environments: {
     dev: {
       label: 'Development',
@@ -15,9 +15,9 @@ window.TAINT_SUPABASE_CONFIG = {
     },
     prod: {
       label: 'Production',
-      url: '',
-      anonKey: '',
-      siteUrl: 'https://your-production-domain.example/index.html'
+      url: 'https://oavkdvuvlupawxhjtowh.supabase.co',
+      anonKey: 'sb_publishable_TRm1ask_1uhISXxo1wUPFw_1WT7Ky_0',
+      siteUrl: 'https://sabarivasantkmech-blip.github.io/taint/index.html'
     }
   },
   auth: {
