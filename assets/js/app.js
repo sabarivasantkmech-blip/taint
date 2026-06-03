@@ -769,6 +769,8 @@ document.getElementById('refreshBtn').addEventListener('click', () => fetchLiveP
 
 let routeTimer, acTimers = {};
 let routeMap = null, routePolyline = null;
+let lastRouteGeometry = null;
+let impactRouteLayer = null;
 let pinFrom = null, pinTo = null;
 let coordFrom = null, coordTo = null;
 let routeMapReady = false;
@@ -1071,6 +1073,7 @@ function applyEffectiveDist(){
 
 function renderPolyline(geometry,color){
   if(!routeMap||!geometry) return;
+  lastRouteGeometry = geometry;
   if(routePolyline) routeMap.removeLayer(routePolyline);
   routePolyline=L.geoJSON(geometry,{style:{color,weight:4,opacity:.88,lineJoin:'round',lineCap:'round'}}).addTo(routeMap);
   routeMap.fitBounds(routePolyline.getBounds().pad(0.12));
@@ -1196,6 +1199,8 @@ document.addEventListener('click',e=>{ if(e.target.closest?.('.fp')) setTimeout(
     if(wh==='from'){ if(pinFrom){routeMap.removeLayer(pinFrom);pinFrom=null;} coordFrom=null; }
     else           { if(pinTo)  {routeMap.removeLayer(pinTo);  pinTo  =null;} coordTo  =null; }
     if(routePolyline){ routeMap.removeLayer(routePolyline); routePolyline=null; }
+    lastRouteGeometry = null;
+    clearImpactRouteLayer();
   });
 });
 
@@ -1296,6 +1301,8 @@ function resetRouteState() {
   if (routeMap && pinTo) { routeMap.removeLayer(pinTo); pinTo = null; }
   coordFrom = null;
   coordTo = null;
+  lastRouteGeometry = null;
+  clearImpactRouteLayer();
   distLinked = true;
 }
 
@@ -1310,7 +1317,7 @@ function resetCityVisionState() {
   const genCta = document.getElementById('genCta');
   if (genCta) genCta.style.display = 'none';
   const genText = document.getElementById('genBtnText');
-  if (genText) genText.textContent = 'Apply Smog Proxy';
+  if (genText) genText.textContent = 'Apply Impact Proxy';
   const genIcon = document.getElementById('genBtnIcon');
   if (genIcon) genIcon.textContent = '↻';
   const effect = document.getElementById('mapEffect');
@@ -1320,6 +1327,7 @@ function resetCityVisionState() {
     smogOverlay.style.background = 'transparent';
     smogOverlay.style.opacity = '0';
   }
+  clearImpactRouteLayer();
   const viFill = document.getElementById('viBarFill');
   if (viFill) viFill.style.width = '0%';
   const viText = document.getElementById('viIntensityText');
@@ -2403,7 +2411,61 @@ function updateVisionMeter(perPaxKg) {
   if (perPaxKg > 0 && genCta) genCta.style.display = 'block';
 }
 
-/* Apply CSS pollution filter to the right Leaflet map */
+function clearImpactRouteLayer() {
+  if (impactRouteLayer && leafEffect) {
+    leafEffect.removeLayer(impactRouteLayer);
+  }
+  impactRouteLayer = null;
+}
+
+function renderImpactRoutePlume(hazePct, smogIndex) {
+  clearImpactRouteLayer();
+  if (!leafEffect || !lastRouteGeometry || smogIndex <= 0.001 || !window.L) return false;
+  const haloWeight = 16 + Math.round(hazePct * 30);
+  const coreWeight = 5 + Math.round(hazePct * 9);
+  const haloOpacity = Math.min(0.42, 0.10 + hazePct * 0.28);
+  const coreOpacity = Math.min(0.72, 0.18 + hazePct * 0.38);
+  impactRouteLayer = L.layerGroup([
+    L.geoJSON(lastRouteGeometry, {
+      interactive: false,
+      style: {
+        color: '#d6c08a',
+        weight: haloWeight,
+        opacity: haloOpacity,
+        lineJoin: 'round',
+        lineCap: 'round',
+        className: 'impact-route-halo'
+      }
+    }),
+    L.geoJSON(lastRouteGeometry, {
+      interactive: false,
+      style: {
+        color: smogIndex < 0.18 ? '#f3d98b' : '#c79a54',
+        weight: coreWeight,
+        opacity: coreOpacity,
+        lineJoin: 'round',
+        lineCap: 'round',
+        className: 'impact-route-core'
+      }
+    })
+  ]).addTo(leafEffect);
+  return true;
+}
+
+function corridorImpactBackground(hazePct, hasRoutePlume) {
+  const veil = Math.min(0.28, 0.05 + hazePct * 0.18);
+  const corridor = Math.min(0.32, 0.07 + hazePct * 0.24);
+  const plume = Math.min(0.24, 0.05 + hazePct * 0.17);
+  const routeLayerHint = hasRoutePlume ? 'rgba(96,84,62,0.05)' : `rgba(96,84,62,${plume.toFixed(3)})`;
+  return [
+    `linear-gradient(115deg,rgba(224,214,184,${veil.toFixed(3)}),rgba(126,116,94,${(veil * 0.62).toFixed(3)}))`,
+    `radial-gradient(ellipse at 28% 68%,rgba(218,202,158,${corridor.toFixed(3)}),transparent 46%)`,
+    `radial-gradient(ellipse at 72% 30%,rgba(176,154,112,${(corridor * 0.72).toFixed(3)}),transparent 44%)`,
+    `linear-gradient(32deg,transparent 18%,${routeLayerHint} 43%,transparent 68%)`
+  ].join(',');
+}
+
+/* Apply a qualitative environmental impact proxy to the right Leaflet map */
 function applyEmissionEffect() {
   const mapEffectEl = document.getElementById('mapEffect');
   if (!mapEffectEl) return;
@@ -2418,26 +2480,28 @@ function applyEmissionEffect() {
   if (smogIndex <= 0.001) {
     filterStr = 'none';
     smogBg = 'transparent'; smogOpacity = 0;
-    aqiLabel = 'Negligible local-pollutant proxy'; smogLabel = 'Clear conditions';
+    aqiLabel = 'Negligible relative pollutant proxy'; smogLabel = 'Clear proxy';
   } else if (smogIndex < 0.05) {
     filterStr = 'sepia(6%) brightness(98%) saturate(93%) contrast(98%)';
-    smogBg = 'linear-gradient(rgba(210,205,185,0.07),rgba(196,190,170,0.05))'; smogOpacity = 1;
-    aqiLabel = 'Low local-pollutant proxy'; smogLabel = 'Light haze';
+    smogBg = corridorImpactBackground(hazePct, false); smogOpacity = 0.58;
+    aqiLabel = 'Low relative pollutant proxy'; smogLabel = 'Light corridor haze';
   } else if (smogIndex < 0.18) {
     filterStr = 'sepia(18%) saturate(80%) brightness(91%) contrast(93%)';
-    smogBg = 'radial-gradient(circle at 50% 25%,rgba(224,218,190,0.22),rgba(171,158,125,0.12) 55%,rgba(118,110,92,0.08))'; smogOpacity = 1;
-    aqiLabel = 'Moderate local-pollutant proxy'; smogLabel = 'Visible haze';
+    smogBg = corridorImpactBackground(hazePct, false); smogOpacity = 0.76;
+    aqiLabel = 'Moderate relative pollutant proxy'; smogLabel = 'Visible corridor haze';
   } else if (smogIndex < 0.5) {
     filterStr = 'sepia(36%) saturate(62%) brightness(82%) contrast(88%)';
-    smogBg = 'linear-gradient(rgba(164,150,113,0.25),rgba(126,116,94,0.18)),radial-gradient(circle at 50% 20%,rgba(225,214,174,0.20),transparent 58%)'; smogOpacity = 1;
-    aqiLabel = 'High local-pollutant proxy'; smogLabel = 'Dense urban haze';
+    smogBg = corridorImpactBackground(hazePct, false); smogOpacity = 0.9;
+    aqiLabel = 'High relative pollutant proxy'; smogLabel = 'Dense route-corridor haze';
   } else {
     filterStr = 'sepia(58%) saturate(42%) brightness(68%) contrast(82%) blur(0.6px)';
-    smogBg = 'linear-gradient(rgba(110,102,86,0.38),rgba(74,70,62,0.30)),radial-gradient(circle at 48% 22%,rgba(210,196,152,0.25),transparent 48%)'; smogOpacity = 1;
-    aqiLabel = 'Critical local-pollutant proxy'; smogLabel = 'Severe smog proxy';
+    smogBg = corridorImpactBackground(hazePct, false); smogOpacity = 1;
+    aqiLabel = 'Critical relative pollutant proxy'; smogLabel = 'Severe route-corridor proxy';
   }
 
   mapEffectEl.style.filter = filterStr;
+  const plumeRendered = renderImpactRoutePlume(hazePct, smogIndex);
+  if (smogIndex > 0.001) smogBg = corridorImpactBackground(hazePct, plumeRendered);
 
   const smogOverlay = document.getElementById('smogOverlay');
   if (smogOverlay) {
@@ -2457,7 +2521,7 @@ function applyEmissionEffect() {
   const promptPolluted = el('promptPolluted');
   if (promptDetails)  promptDetails.style.display  = '';
   if (promptPolluted) promptPolluted.textContent =
-    `Smog index ${smogIndex.toFixed(3)} = per-person CO2 ${lastPerPaxKg.toFixed(3)} kg x fuel/PUC/local-tailpipe modifiers. Visual haze strength ${(hazePct*100).toFixed(0)}%. This is a qualitative co-emitted PM/NOx proxy, not measured AQI.`;
+    `Impact proxy ${smogIndex.toFixed(3)} = per-person CO2 ${lastPerPaxKg.toFixed(3)} kg x fuel/PUC/local-tailpipe modifiers. Visual overlay strength ${(hazePct*100).toFixed(0)}%. ${plumeRendered ? 'Route geometry is used to weight the plume along the selected road corridor.' : 'No route geometry is available, so the panel uses a city-area corridor proxy.'} This is a qualitative co-emitted PM/NOx activity proxy, not measured AQI, satellite aerosol optical depth, or a physical smog forecast.`;
 
   const visionCompare = el('visionCompare');
   if (visionCompare) {
@@ -2472,7 +2536,7 @@ function applyEmissionEffect() {
     if (el('vcVis'))    el('vcVis').textContent    = visLoss + '%';
   }
 
-  if (el('genBtnText')) el('genBtnText').textContent = 'Update Smog Proxy';
+  if (el('genBtnText')) el('genBtnText').textContent = 'Update Impact Proxy';
   if (el('genBtnIcon')) el('genBtnIcon').textContent = '↻';
 }
 
@@ -2506,9 +2570,9 @@ function generateCityVision() {
 //          Imagery static export (free · no auth · instant)
 //          URL: arcgisonline.com/.../World_Imagery/.../export
 //
-//  RIGHT : synced ESRI satellite view with a CSS aerosol haze proxy.
-//          Haze strength scales with per-person CO2, fuel, PUC status,
-//          and local tailpipe-pollutant risk. This is not measured AQI.
+//  RIGHT : synced ESRI satellite view with a corridor-weighted impact proxy.
+//          Overlay strength scales with per-person CO2, fuel, PUC status,
+//          route geometry, and local tailpipe-pollutant risk. This is not measured AQI.
 //
 //  ESRI bbox format: minLon,minLat,maxLon,maxLat (WGS84)
 // ──────────────────────────────────────────────────────
@@ -2526,7 +2590,7 @@ function generateCityVision() {
 /* ──────────────────────────────────────────────────────
    CITY VISION — Leaflet maps (satellite + street overlay)
    Left panel: interactive map the user can pan/zoom.
-   Right panel: synced non-interactive map with CSS pollution filter.
+   Right panel: synced non-interactive map with route/corridor impact proxy.
    ────────────────────────────────────────────────────── */
 
 // ──────────────────────────────────────────────────────
@@ -2743,6 +2807,8 @@ function setCity(key) {
     if (routePolyline){ routeMap.removeLayer(routePolyline); routePolyline=null; }
     if (pinFrom){ routeMap.removeLayer(pinFrom); pinFrom=null; coordFrom=null; }
     if (pinTo)  { routeMap.removeLayer(pinTo);   pinTo=null;   coordTo=null;   }
+    lastRouteGeometry = null;
+    clearImpactRouteLayer();
     document.getElementById('fromLoc').value='';
     document.getElementById('toLoc').value='';
     ['fromClear','toClear'].forEach(id=>document.getElementById(id).classList.remove('show'));
@@ -2773,6 +2839,7 @@ function setCity(key) {
   if (routeErr) routeErr.textContent = `Could not find one or both locations. Try adding "${city().name}".`;
   const visionCity = document.getElementById('visionCityName');
   if (visionCity) visionCity.textContent = city().name;
+  try { if (typeof updateWelcomeCard === 'function') updateWelcomeCard(currentUser); } catch {}
 
   /* Refresh live data */
   fetchWeather();
@@ -3961,6 +4028,68 @@ async function restoreSession() {
   return false;
 }
 
+let welcomeSessionState = { key:'', startedAt:null };
+
+function authUserKey(user) {
+  if (!user) return 'guest';
+  return `${user.provider || 'local'}:${user.id || user.email || user.name || 'user'}`;
+}
+
+function displayNameForGreeting(user) {
+  if (!user) return 'Guest';
+  const raw = String(user.name || user.email?.split('@')[0] || 'User').trim();
+  return raw || 'User';
+}
+
+function greetingForLoginTime(date) {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function sessionStartForUser(user, key) {
+  const storageKey = `taint_session_started_at_${key}`;
+  if (!user) {
+    const now = Date.now();
+    try { sessionStorage.setItem(storageKey, String(now)); } catch {}
+    return new Date(now);
+  }
+  if (user?.loginAt) {
+    try { sessionStorage.setItem(storageKey, String(user.loginAt)); } catch {}
+    return new Date(user.loginAt);
+  }
+  try {
+    const saved = Number(sessionStorage.getItem(storageKey));
+    if (Number.isFinite(saved) && saved > 0) return new Date(saved);
+  } catch {}
+  const now = Date.now();
+  try { sessionStorage.setItem(storageKey, String(now)); } catch {}
+  return new Date(now);
+}
+
+function updateWelcomeCard(user) {
+  const card = document.getElementById('welcomeCard');
+  if (!card) return;
+  const key = authUserKey(user);
+  if (welcomeSessionState.key !== key || !welcomeSessionState.startedAt) {
+    welcomeSessionState = { key, startedAt: sessionStartForUser(user, key) };
+  }
+  const startedAt = welcomeSessionState.startedAt || new Date();
+  const name = displayNameForGreeting(user);
+  const provider = user ? `${providerLabel(user.provider || 'local')} account` : 'Guest mode';
+  const timeText = new Intl.DateTimeFormat(undefined, { hour:'2-digit', minute:'2-digit' }).format(startedAt);
+  const dateText = new Intl.DateTimeFormat(undefined, { month:'short', day:'numeric' }).format(startedAt);
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('welcomeGreeting', greetingForLoginTime(startedAt));
+  setText('welcomeUserName', name);
+  setText('welcomeLoginTime', user ? `Signed in at ${timeText} on ${dateText}` : `Guest session started at ${timeText} on ${dateText}`);
+  setText('welcomeSessionChip', provider);
+  setText('welcomeMessage', user
+    ? `Your ${city().name} footprint workspace is ready. Recent calculations and trends will save to your account where storage is enabled.`
+    : `Your ${city().name} workspace is ready in guest mode. Sign in to save recent calculations and trend history.`);
+}
+
 function updateAuthUI(user) {
   const initial = userInitials(user);
   const name    = user ? (user.name||user.email.split('@')[0]) : 'Guest';
@@ -3983,6 +4112,7 @@ function updateAuthUI(user) {
   if(mp) mp.textContent=provider;
   if(details){ details.textContent=isGuest?'Sign in to view details':'Account details'; details.disabled=false; }
   if(logout){ logout.textContent=isGuest?'Sign In / Sign Up':'Logout'; }
+  updateWelcomeCard(user);
   syncAdminVisibility();
   refreshAllRecentCalculations();
 }

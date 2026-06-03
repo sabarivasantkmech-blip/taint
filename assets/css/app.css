@@ -141,6 +141,76 @@ html.light .topbar{background:rgba(255,255,255,.92);}
 }
 .theme-btn:hover{color:var(--tx);}
 
+.welcome-card{
+  max-width:1400px;
+  margin:12px auto 0;
+  padding:12px 16px;
+  position:relative;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  border:1px solid rgba(52,211,153,.22);
+  border-radius:10px;
+  background:
+    linear-gradient(135deg,rgba(52,211,153,.12),rgba(34,211,238,.07)),
+    var(--surface);
+  box-shadow:0 14px 32px rgba(0,0,0,.22);
+}
+html.light .welcome-card{
+  background:
+    linear-gradient(135deg,rgba(5,150,105,.10),rgba(8,145,178,.06)),
+    var(--surface);
+  box-shadow:0 10px 24px rgba(15,23,42,.08);
+}
+.welcome-copy{min-width:0;}
+.welcome-kicker{
+  font-size:10px;
+  color:var(--hi);
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-weight:700;
+  margin-bottom:2px;
+}
+.welcome-card h2{
+  font-size:clamp(1rem,2vw,1.22rem);
+  line-height:1.2;
+  font-weight:800;
+  letter-spacing:0;
+}
+.welcome-card p{
+  margin-top:3px;
+  font-size:12.5px;
+  color:var(--mu);
+  line-height:1.45;
+}
+.welcome-chip{
+  flex-shrink:0;
+  max-width:240px;
+  border:1px solid rgba(52,211,153,.28);
+  background:var(--gdim);
+  color:var(--green);
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+@media(max-width:760px){
+  .welcome-card{
+    margin:10px 12px 0;
+    align-items:flex-start;
+    flex-direction:column;
+    padding:12px;
+  }
+  .welcome-chip{max-width:100%;}
+}
+
 /* ══ PAGE WRAPPER ══ */
 .wrap{
   max-width:1400px;margin:0 auto;
@@ -1557,6 +1627,14 @@ textarea{resize:vertical;min-height:88px;line-height:1.55;}
   position:absolute;inset:0;width:100%!important;height:100%!important;
 }
 .leaflet-container { background: var(--s2); }
+.impact-route-halo{
+  filter:blur(3px);
+  mix-blend-mode:screen;
+}
+.impact-route-core{
+  filter:drop-shadow(0 0 8px rgba(214,192,138,.35));
+  mix-blend-mode:screen;
+}
 .img-frame img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .5s;}
 .img-frame img[src=""]{opacity:0;}
 .img-overlay{

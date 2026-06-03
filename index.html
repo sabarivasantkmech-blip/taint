@@ -126,6 +126,15 @@
   </div>
 </nav>
 
+<section class="welcome-card" id="welcomeCard" aria-live="polite">
+  <div class="welcome-copy">
+    <div class="welcome-kicker" id="welcomeLoginTime">Session starting...</div>
+    <h2><span id="welcomeGreeting">Good day</span>, <span id="welcomeUserName">Guest</span></h2>
+    <p id="welcomeMessage">Your TAINT workspace is ready for city commute, home, workplace, and purchase footprint accounting.</p>
+  </div>
+  <div class="welcome-chip" id="welcomeSessionChip">Guest mode</div>
+</section>
+
 <!-- ═══════════════════════════════════════════════
      PAGE WRAPPER — max-width centred column
      ═══════════════════════════════════════════════ -->
@@ -446,11 +455,11 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════
-       CITY VISION — Satellite + Smog Proxy
+       CITY VISION — Satellite + Environmental Impact Proxy
        LEFT  : Real Chennai satellite imagery via ESRI
                World Imagery (free · no key · instant)
        RIGHT : synced satellite view with an aerosol haze proxy
-               scaled by calculated CO₂, fuel, and PUC status
+               scaled by calculated CO₂, fuel, PUC status, and route intensity
        ══════════════════════════════════════════════════ -->
   <div class="card recent-card" id="commuteHistoryCard">
     <div class="card-title">Recent Commute Calculations <span class="recent-meta" id="commuteRecentMeta">latest 5</span></div>
@@ -461,11 +470,12 @@
   </div>
 
   <div class="card" id="cityVisionCard">
-    <div class="card-title">City vision — Satellite vs Smog Proxy</div>
+    <div class="card-title">City vision — Satellite vs Environmental Impact Proxy</div>
     <p class="vision-intro">
       <strong>Left</strong>: Real <span id="visionCityName">Chennai</span> satellite imagery (ESRI World Imagery).
-      <strong>Right</strong>: a scientifically bounded haze proxy based on commute CO₂, fuel type,
-      tailpipe status, and local-pollutant co-emission risk. It is a visual model, not measured AQI.
+      <strong>Right</strong>: a scientifically bounded environmental impact proxy based on commute CO₂,
+      fuel type, tailpipe status, route corridors, and local-pollutant co-emission risk. It is a relative
+      visual model, not measured AQI or an actual smog prediction.
     </p>
 
     <!-- Emission intensity meter -->
@@ -487,10 +497,10 @@
     <div id="genCta" style="display:none">
       <button class="gen-btn" id="genBtn">
         <span id="genBtnIcon">↻</span>
-        <span id="genBtnText">Apply Smog Proxy</span>
+        <span id="genBtnText">Apply Impact Proxy</span>
       </button>
       <div style="font-size:11px;color:var(--hi);text-align:center;margin-top:5px">
-        Real satellite imagery · aerosol-style haze proxy · no generative image service
+        Real satellite imagery · route-weighted impact proxy · no generative image service
       </div>
     </div>
 
@@ -527,10 +537,10 @@
         </div>
       </div>
 
-      <!-- RIGHT: Canvas copy + CSS filter + smog overlay per emission level -->
+      <!-- RIGHT: synced map + CSS filter + route/corridor impact overlay per emission level -->
       <div class="vision-panel">
         <div class="vision-label-row">
-          <span class="vision-label">Smog proxy from this trip</span>
+          <span class="vision-label">Relative impact visualization</span>
           <span class="vs-pill" id="vsPollBadge">Calculate above ↑</span>
         </div>
         <div class="img-frame" style="position:relative;min-height:320px">
@@ -542,19 +552,19 @@
           </div>
         </div>
         <div class="vision-stats">
-          <span class="vs-pill" id="vsAqiPill">Local pollutant proxy…</span>
-          <span class="vs-pill" id="vsSmogPill">Haze level…</span>
+          <span class="vs-pill" id="vsAqiPill">Relative pollutant proxy...</span>
+          <span class="vs-pill" id="vsSmogPill">Impact level...</span>
         </div>
         <div style="font-size:10.5px;color:var(--hi);margin-top:6px;line-height:1.5">
-          Same satellite map with aerosol-style desaturation, brightness loss, and haze overlay. CO₂ is used as an activity proxy; fuel and PUC status adjust local-smog intensity.
+          Same satellite map with corridor-weighted haze and route plume overlays. CO₂ is used as an activity proxy; fuel and PUC status adjust relative local-pollutant intensity.
         </div>
       </div>
     </div>
     <!-- Prompt inspection -->
     <details id="promptDetails" style="display:none;margin-top:.75rem">
-      <summary style="font-size:12px;color:var(--mu)">View smog proxy method</summary>
+      <summary style="font-size:12px;color:var(--mu)">View impact proxy method</summary>
       <div style="margin-top:8px">
-        <div style="font-size:10px;color:var(--hi);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Smog proxy method</div>
+        <div style="font-size:10px;color:var(--hi);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Environmental impact proxy method</div>
         <div class="prompt-box" id="promptPolluted"></div>
       </div>
     </details>
@@ -572,20 +582,20 @@
         <div class="vc-unit">trees × 1 year</div>
       </div>
       <div class="vc-item">
-        <div class="vc-lbl">Local pollutant proxy</div>
+        <div class="vc-lbl">Relative pollutant proxy</div>
         <div class="vc-val" id="vcAqi">—</div>
-        <div class="vc-unit">index points added</div>
+        <div class="vc-unit">model index points</div>
       </div>
       <div class="vc-item">
-        <div class="vc-lbl">Visibility loss</div>
+        <div class="vc-lbl">Visual haze proxy</div>
         <div class="vc-val" id="vcVis">—</div>
-        <div class="vc-unit">% vs clear satellite day</div>
+        <div class="vc-unit">% conceptual overlay strength</div>
       </div>
     </div>
 
     <p style="font-size:10.5px;color:var(--hi);margin-top:.75rem;line-height:1.5">
       📡 Satellite imagery: <a href="https://www.esri.com/en-us/arcgis/products/arcgis-world-imagery" target="_blank" rel="noopener" style="color:var(--blue)">ESRI World Imagery</a> (free, public).
-      Smog proxy: qualitative aerosol haze model using trip activity, fuel type, and PUC status. It is not a measured air-quality forecast.
+      Environmental impact proxy: qualitative aerosol-style visualization using trip activity, fuel type, PUC status, and route/corridor intensity. One commute cannot visibly change city smog; this is not measured AQI or a forecast.
     </p>
   </div>
   <!-- ── FUEL COST COMPARISON ── -->
@@ -754,7 +764,7 @@
         <div class="gap-item"><b>Gap fixed:</b> grid electricity now cites CEA's CO₂ Baseline Database instead of a state utility-only note, so EV and rail factors have an India power-sector source.</div>
         <div class="gap-item"><b>Gap fixed:</b> vehicle comparisons cite ICCT's India life-cycle work and IPCC AR6 transport context instead of relying only on raw table factors.</div>
         <div class="gap-item"><b>Gap fixed:</b> PUC is treated as a maintenance and tailpipe-pollutant proxy. It is not used as a direct CO₂ instrument.</div>
-        <div class="gap-item warn"><b>Remaining approximation:</b> city fleet mix, live congestion emissions, real AQI chemistry, and satellite-smog visuals are modeled estimates. Admin factors should be recalibrated when verified city fleet or remote-sensing data is available.</div>
+        <div class="gap-item warn"><b>Remaining approximation:</b> city fleet mix, live congestion emissions, real AQI chemistry, and satellite-impact visuals are modeled estimates. Admin factors should be recalibrated when verified city fleet or remote-sensing data is available.</div>
       </div>
     </details>
   </div>
