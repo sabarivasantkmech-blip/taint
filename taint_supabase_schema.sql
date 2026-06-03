@@ -174,10 +174,12 @@ create index if not exists idx_app_events_device_id on public.app_events(device_
 create index if not exists idx_calculation_logs_created_at on public.calculation_logs(created_at desc);
 create index if not exists idx_calculation_logs_user on public.calculation_logs(auth_user_id, created_at desc);
 create index if not exists idx_route_logs_created_at on public.route_logs(created_at desc);
+create index if not exists idx_route_logs_user on public.route_logs(auth_user_id, created_at desc);
 create index if not exists idx_feedback_messages_created_at on public.feedback_messages(created_at desc);
 create index if not exists idx_carbon_profiles_user on public.carbon_profiles(auth_user_id, created_at desc);
 create index if not exists idx_product_clicks_created_at on public.product_clicks(created_at desc);
 create index if not exists idx_process_runs_created_at on public.process_runs(started_at desc);
+create index if not exists idx_process_runs_user on public.process_runs(auth_user_id, started_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Utility trigger/functions.
@@ -307,130 +309,133 @@ drop policy if exists "users read own profile" on public.profiles;
 create policy "users read own profile"
 on public.profiles for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "users update own profile" on public.profiles;
 create policy "users update own profile"
 on public.profiles for update
 to authenticated
-using (auth_user_id = auth.uid())
-with check (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()))
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "users insert own profile" on public.profiles;
 create policy "users insert own profile"
 on public.profiles for insert
 to authenticated
-with check (auth_user_id = auth.uid());
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own visitor device" on public.visitor_devices;
 create policy "read own visitor device"
 on public.visitor_devices for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
--- Logs are write-only for guests. Signed-in users can read their own rows.
+-- Anonymous users can write app events and feedback only. User-owned logs and
+-- profile rows require authenticated owners and are readable only by that owner.
 drop policy if exists "insert app events" on public.app_events;
 create policy "insert app events"
 on public.app_events for insert
 to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+with check (auth_user_id is null or auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own app events" on public.app_events;
 create policy "read own app events"
 on public.app_events for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert calculation logs" on public.calculation_logs;
 create policy "insert calculation logs"
 on public.calculation_logs for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own calculation logs" on public.calculation_logs;
 create policy "read own calculation logs"
 on public.calculation_logs for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert route logs" on public.route_logs;
 create policy "insert route logs"
 on public.route_logs for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own route logs" on public.route_logs;
 create policy "read own route logs"
 on public.route_logs for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert feedback" on public.feedback_messages;
 create policy "insert feedback"
 on public.feedback_messages for insert
 to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+with check (auth_user_id is null or auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own feedback" on public.feedback_messages;
 create policy "read own feedback"
 on public.feedback_messages for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert carbon profiles" on public.carbon_profiles;
 create policy "insert carbon profiles"
 on public.carbon_profiles for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own carbon profiles" on public.carbon_profiles;
 create policy "read own carbon profiles"
 on public.carbon_profiles for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert commitments" on public.commitments;
 create policy "insert commitments"
 on public.commitments for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own commitments" on public.commitments;
 create policy "read own commitments"
 on public.commitments for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert product clicks" on public.product_clicks;
 create policy "insert product clicks"
 on public.product_clicks for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own product clicks" on public.product_clicks;
 create policy "read own product clicks"
 on public.product_clicks for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 drop policy if exists "insert process runs" on public.process_runs;
 create policy "insert process runs"
 on public.process_runs for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = auth.uid());
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own process runs" on public.process_runs;
 create policy "read own process runs"
 on public.process_runs for select
 to authenticated
-using (auth_user_id = auth.uid());
+using (auth_user_id = (select auth.uid()));
 
 grant usage on schema public to anon, authenticated;
 grant select on public.stats to anon, authenticated;
 grant select, insert, update on public.profiles to authenticated;
-grant insert on public.app_events, public.calculation_logs, public.route_logs,
-  public.feedback_messages, public.carbon_profiles, public.commitments,
-  public.product_clicks, public.process_runs to anon, authenticated;
+revoke all on public.calculation_logs, public.route_logs, public.carbon_profiles,
+  public.commitments, public.product_clicks, public.process_runs from anon;
+grant insert on public.app_events, public.feedback_messages to anon, authenticated;
+grant insert on public.calculation_logs, public.route_logs, public.carbon_profiles,
+  public.commitments, public.product_clicks, public.process_runs to authenticated;
 grant select on public.app_events, public.calculation_logs, public.route_logs,
   public.feedback_messages, public.carbon_profiles, public.commitments,
   public.product_clicks, public.process_runs to authenticated;

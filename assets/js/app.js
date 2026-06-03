@@ -701,8 +701,27 @@ async function trySource(src) {
   return null;
 }
 
+function formatFuelRate(value, unit) {
+  const num = Number(value);
+  return Number.isFinite(num) ? `₹${num.toFixed(2)}/${unit}` : `₹--/${unit}`;
+}
+
+function updateWelcomeFuelRates(source='fallback') {
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('welcomePetrolRate', formatFuelRate(PRICES.petrol, 'L'));
+  setText('welcomeDieselRate', formatFuelRate(PRICES.diesel, 'L'));
+  setText('welcomeCngRate', formatFuelRate(PRICES.cng, 'kg'));
+  setText('welcomeElecRate', formatFuelRate(PRICES.electric, 'kWh'));
+  const label = source === 'live' ? 'Live today'
+    : source === 'cached' ? 'Cached today'
+    : source === 'loading' ? 'Fetching'
+    : 'Fallback';
+  setText('welcomeFuelSource', label);
+}
+
 function applyPrices(p, source) {
   PRICES = { ...DEFAULT_PRICES, ...p };
+  updateWelcomeFuelRates(source);
   /* Update price pills */
   document.getElementById('ppPetrol').textContent = `₹${PRICES.petrol.toFixed(2)}/L`;
   document.getElementById('ppDiesel').textContent = `₹${PRICES.diesel.toFixed(2)}/L`;
@@ -1237,7 +1256,8 @@ function bumpLocal() {
 
 function updateMonthStat() {
   const s=getStats(), mk=mkKey();
-  document.getElementById('statMonth').textContent = (s.monthly?.[mk]||0).toLocaleString();
+  const statMonth = document.getElementById('statMonth');
+  if (statMonth) statMonth.textContent = (s.monthly?.[mk]||0).toLocaleString();
   updateAdminStats();
 }
 
@@ -1252,8 +1272,11 @@ function renderTracker() {
   }
   const max=Math.max(...months.map(m=>m.count),1);
   const curKey=mkKey();
-  const chart=document.getElementById('monthChart'); chart.innerHTML='';
-  const lbls=document.getElementById('monthLbls');  lbls.innerHTML='';
+  const chart=document.getElementById('monthChart');
+  const lbls=document.getElementById('monthLbls');
+  if (!chart || !lbls) { updateAdminStats(); return; }
+  chart.innerHTML='';
+  lbls.innerHTML='';
   months.forEach(m=>{
     const pct=Math.max((m.count/max)*100, m.count>0?6:3);
     const isCur=m.key===curKey;
@@ -1264,8 +1287,10 @@ function renderTracker() {
     lbls.appendChild(lb);
   });
   const total=Object.values(monthly).reduce((a,b)=>a+b,0);
-  document.getElementById('totalLocal').textContent=total.toLocaleString();
-  if(s.firstSeen) document.getElementById('firstSeenLbl').textContent=`since ${new Date(s.firstSeen).toLocaleDateString('en-IN',{month:'short',year:'numeric'})}`;
+  const totalLocal = document.getElementById('totalLocal');
+  if (totalLocal) totalLocal.textContent=total.toLocaleString();
+  const firstSeenLbl = document.getElementById('firstSeenLbl');
+  if(s.firstSeen && firstSeenLbl) firstSeenLbl.textContent=`since ${new Date(s.firstSeen).toLocaleDateString('en-IN',{month:'short',year:'numeric'})}`;
   updateAdminStats();
 }
 
@@ -1339,42 +1364,114 @@ function resetCityVisionState() {
   if (viDetail) viDetail.textContent = '';
 }
 
-function resetAppToDefaults() {
-  try { localStorage.removeItem('taint_stats'); } catch {}
+function relocateCityVisionToAdmin() {
+  const card = document.getElementById('cityVisionCard');
+  const admin = document.getElementById('adminSection');
+  if (!card || !admin || card.parentElement === admin) return;
+  const anchor = admin.querySelector('.factor-card') || admin.firstElementChild;
+  if (anchor) admin.insertBefore(card, anchor);
+  else admin.appendChild(card);
+  card.classList.add('admin-city-vision-card');
+  const title = card.querySelector('.card-title');
+  if (title) title.textContent = 'Admin city vision - Satellite vs Environmental Impact Proxy';
+}
 
+function renderSignedOutCommuteState() {
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('totalCo2', '—');
+  setText('perPax', '—');
+  setText('trees', '—');
+  const badge = document.getElementById('fuelBadge');
+  if (badge) {
+    badge.className = 'fuel-badge';
+    badge.textContent = 'Sign in required';
+  }
+  const cmp = document.getElementById('cmpRow');
+  if (cmp) cmp.innerHTML = '';
+  const bar = document.getElementById('ratingBar');
+  if (bar) bar.style.width = '0%';
+  setText('ratingTxt', 'Sign in');
+  const tip = document.getElementById('tipText');
+  if (tip) tip.textContent = 'Sign in to calculate and save your carbon footprint.';
+  window._commuteResult = null;
+  resetCityVisionState();
+}
+
+function resetCommuteDefaults(options={}) {
   currentCat = 'two';
   currentFuel = 'petrol';
   currentHtype = 'mild';
-
   resetControlsToDefaults('#commuteSection');
-  resetControlsToDefaults('#workplaceSection');
-  resetControlsToDefaults('#homeSection');
-  resetControlsToDefaults('#taintSection');
   resetRouteState();
-
-  document.getElementById('distance').value = '10';
-  document.getElementById('passengers').value = '1';
-  document.getElementById('pucStatus').value = 'valid_clean';
-  document.getElementById('pucCo').value = '';
-  document.getElementById('pucSmoke').value = '';
-
+  const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+  setValue('distance', '10');
+  setValue('passengers', '1');
+  setValue('pucStatus', 'valid_clean');
+  setValue('pucCo', '');
+  setValue('pucSmoke', '');
   document.querySelectorAll('.cat-btn').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.cat === currentCat));
   document.querySelectorAll('.hp-btn').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.htype === currentHtype));
-
-  if (typeof setCity === 'function') setCity('chennai');
   if (typeof setDistLinked === 'function') setDistLinked(true);
-
   renderFuelPills(currentCat);
   populateVehicles();
   updatePucUI();
   resetCityVisionState();
+  if (!isSignedInUser()) renderSignedOutCommuteState();
+  if (options.notify !== false) notify('Commute defaults restored.', 'success', 'Reset');
+}
 
-  if (typeof calculateWorkplace === 'function') calculateWorkplace();
-  if (typeof calculateHome === 'function') calculateHome();
+function resetWorkplaceDefaults(options={}) {
+  resetControlsToDefaults('#workplaceSection');
+  wpUpdateSplitSum();
+  const result = document.getElementById('wpResultCard');
+  if (result) result.style.display = 'none';
+  window._wpResult = null;
+  if (typeof mtImportSavedModeResults === 'function') mtImportSavedModeResults({ silent:true });
+  if (options.notify !== false) notify('Workplace defaults restored.', 'success', 'Reset');
+}
+
+function resetHomeDefaults(options={}) {
+  resetControlsToDefaults('#homeSection');
+  const result = document.getElementById('hmResultCard');
+  if (result) result.style.display = 'none';
+  window._hmResult = null;
+  if (typeof mtImportSavedModeResults === 'function') mtImportSavedModeResults({ silent:true });
+  if (options.notify !== false) notify('Home defaults restored.', 'success', 'Reset');
+}
+
+function resetMyTaintDefaults(options={}) {
+  resetControlsToDefaults('#taintSection');
   mtSaved = {};
-  if (typeof mtRenderStep === 'function') { mtStep = 0; mtRenderStep(); }
+  mtStepDone = [false,false,false,false,false,false];
+  window._mtResult = null;
+  ['mtCommuteResult','mtWorkplaceResult','mtHomeResult'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = ''; el.classList.remove('show'); }
+  });
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('mtTotalVal', '—');
+  setText('mtGrade', '—');
+  setText('mtBudgetScale', '');
+  const clearHtml = id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; };
+  ['mtBreakdown','mtBenchmark','mtTipsList'].forEach(clearHtml);
+  ['mtBudgetBar','mtMarkerIndia','mtMarkerParis','mtMarkerYou'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.removeAttribute('style');
+  });
+  if (typeof mtShowStep === 'function') mtShowStep(0);
+  if (options.notify !== false) notify('My Taint defaults restored.', 'success', 'Reset');
+}
+
+function resetAppToDefaults() {
+  try { localStorage.removeItem('taint_stats'); } catch {}
+
+  if (typeof setCity === 'function') setCity('chennai');
+  resetCommuteDefaults({ notify:false });
+  resetWorkplaceDefaults({ notify:false });
+  resetHomeDefaults({ notify:false });
+  resetMyTaintDefaults({ notify:false });
 
   renderTracker();
   updateMonthStat();
@@ -1383,7 +1480,11 @@ function resetAppToDefaults() {
   notify('Defaults restored.', 'success', 'Reset');
 }
 
-document.getElementById('resetBtn').addEventListener('click', resetAppToDefaults);
+document.getElementById('resetBtn')?.addEventListener('click', resetAppToDefaults);
+document.getElementById('commuteResetBtn')?.addEventListener('click', resetCommuteDefaults);
+document.getElementById('wpResetBtn')?.addEventListener('click', resetWorkplaceDefaults);
+document.getElementById('hmResetBtn')?.addEventListener('click', resetHomeDefaults);
+document.getElementById('mtResetBtn')?.addEventListener('click', resetMyTaintDefaults);
 
 // ──────────────────────────────────────────────────────
 //  FIREBASE — global user & calculation counter
@@ -1485,6 +1586,7 @@ const SB_SIGNED_IN_DATA_TABLES = new Set([
   'carbon_profiles',
   'product_clicks',
   'product_purchases',
+  'process_runs',
   'route_logs'
 ]);
 
@@ -1788,7 +1890,8 @@ function rowToRecent(mode, row) {
 async function fetchRecentRemote(mode) {
   const cfg = RECENT_MODE_CONFIG[mode];
   if (!cfg || !SB_CONFIGURED() || !currentUser || currentUser.provider !== 'supabase') return null;
-  const url = `${SUPABASE_CONFIG.url}/rest/v1/${cfg.table}?${cfg.query}&select=${encodeURIComponent(cfg.select)}&order=created_at.desc&limit=5`;
+  const userFilter = `auth_user_id=eq.${encodeURIComponent(currentUser.id)}`;
+  const url = `${SUPABASE_CONFIG.url}/rest/v1/${cfg.table}?${cfg.query}&${userFilter}&select=${encodeURIComponent(cfg.select)}&order=created_at.desc&limit=5`;
   const res = await appFetch(url, { headers: await SB_AUTH_HEADERS() }, { label:`${mode} history`, timeout:9000, retries:1 });
   const rows = await res.json();
   return Array.isArray(rows) ? rows.map(row => rowToRecent(mode, row)) : [];
@@ -1971,6 +2074,11 @@ let calcTimer;
 function scheduleCalc() { clearTimeout(calcTimer); calcTimer=setTimeout(calculate,180); }
 
 function calculate(options={}) {
+  if (!isSignedInUser()) {
+    if (options.log) requireSignedInForAction('calculate');
+    renderSignedOutCommuteState();
+    return;
+  }
   const vVal=document.getElementById('vehicle').value;
   const distCheck = validateNumberField('distance', { min:0.1, max:10000, label:'Distance' });
   const paxCheck  = validateNumberField('passengers', { min:1, max:100, label:'Passengers' });
@@ -2927,6 +3035,7 @@ document.getElementById('genBtn').addEventListener('click', generateCityVision);
 document.addEventListener('DOMContentLoaded',()=>{
   /* Restore saved theme */
   try { if(localStorage.getItem('taint_theme')==='light') applyTheme(true); } catch {}
+  relocateCityVisionToAdmin();
 
   /* Start live clock — updates every second */
   tickClock(); setInterval(tickClock,1000);
@@ -3597,6 +3706,35 @@ let currentUser    = null;
 const AUTH_RESET_COOLDOWN_MS = Number(authSettings().resetEmailCooldownMs || 60000);
 let authResetInFlightEmail = '';
 let authLastResetRequest = { email:'', at:0 };
+let authLinkNoticeShown = false;
+
+function isSignedInUser() {
+  return !!currentUser;
+}
+
+function requireSignedInForAction(action='calculate') {
+  if (isSignedInUser()) return true;
+  const messages = {
+    buy: 'Sign in is required to use Taint Buy.',
+    calculate: 'Sign in is required to calculate and save your carbon footprint.'
+  };
+  const message = messages[action] || messages.calculate;
+  showAuthOverlay('signin');
+  showAuthError(message, { toast:true, title:'Sign in required' });
+  return false;
+}
+
+function syncSignedInOnlyUI() {
+  const signedIn = isSignedInUser();
+  document.querySelectorAll('[data-signed-in-only="true"]').forEach(el => {
+    el.hidden = !signedIn;
+    el.setAttribute('aria-hidden', signedIn ? 'false' : 'true');
+  });
+  const buySection = document.getElementById('buySection');
+  if (!signedIn && buySection && buySection.style.display !== 'none' && typeof setMode === 'function') {
+    setMode('commute');
+  }
+}
 
 if (SB_CONFIGURED() && window.supabase) {
   supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
@@ -3642,14 +3780,29 @@ function isTaintAdminOwner(user=currentUser) {
   return ownerIds.includes(String(user.id || '').trim()) || ownerEmails.includes(normalizeAuthEmail(user.email));
 }
 
-function authRedirectTo() {
+function authRedirectTo(flow='') {
   const configured = cleanAuthUrl(authSettings().siteUrl || window.TAINT_SUPABASE_CONFIG?.siteUrl || '');
-  if (configured) return configured;
+  let redirect = configured;
+  if (!redirect) {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
+    const url = new URL(location.href);
+    url.search = '';
+    url.hash = '';
+    redirect = url.href;
+  }
+  if (!flow) return redirect;
+  try {
+    const url = new URL(redirect);
+    url.searchParams.set('taint_auth', flow);
+    return url.href;
+  } catch {
+    return redirect;
+  }
+}
+
+function currentHttpUrl() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
-  const url = new URL(location.href);
-  url.search = '';
-  url.hash = '';
-  return url.href;
+  return new URL(location.href);
 }
 
 function cleanAuthUrl(value) {
@@ -3682,6 +3835,11 @@ function authUrlError() {
     return 'This email link is expired, already used, or blocked by the Supabase redirect settings. Request a fresh reset link from this app.';
   }
   return desc || 'Supabase could not complete this email link. Request a fresh reset link from this app.';
+}
+
+function authFlowMarker() {
+  const { search, hash } = authUrlParams();
+  return (search.get('taint_auth') || hash.get('taint_auth') || '').toLowerCase();
 }
 
 function enabledOAuthProviders() {
@@ -3729,25 +3887,49 @@ function providerLabel(provider) {
 function authFriendlyError(error, provider) {
   const msg = error?.message || String(error || 'Authentication failed.');
   if (/unsupported provider|provider.*not enabled/i.test(msg)) {
-    return `${providerLabel(provider)} sign-in is not enabled in Supabase. Use email/password, continue as guest, or enable the provider in Supabase Authentication → Providers.`;
+    return `${providerLabel(provider)} sign-in is not enabled in Supabase. Use email/password, continue as guest, or enable the provider in Supabase Authentication -> Providers.`;
   }
   if (/email.*provider|provider.*email|email.*disabled|email.*not enabled|smtp/i.test(msg)) {
     return 'Email/password authentication is not fully enabled in Supabase. Enable Email in Authentication -> Providers and configure SMTP before production.';
   }
+  if (/already.*registered|registered.*already|already.*exists|user.*exists/i.test(msg)) {
+    return 'This email is already registered. Sign in or use forgot password.';
+  }
   if (/invalid login credentials/i.test(msg)) return 'Incorrect email or password.';
   if (/email.*not confirmed|confirm.*email/i.test(msg)) return 'Please confirm your email, then sign in.';
-  if (/signup|signups.*disabled|disabled/i.test(msg)) return 'Email sign-up is disabled in Supabase. Enable Email in Authentication → Providers, or continue in guest mode.';
+  if (/weak password|password.*weak/i.test(msg)) return 'Password does not meet the Supabase password policy. Use a stronger password and try again.';
+  if (/rate limit|too many|over_email_send_rate_limit/i.test(msg)) return 'Too many email requests. Wait a moment, then try again.';
+  if (/redirect|redirect_to|not allowed|url/i.test(msg)) return 'This email link redirect is not allowed in Supabase. Add the deployed app URL to Authentication -> URL Configuration.';
+  if (/otp_expired|expired|invalid token|token.*invalid/i.test(msg)) return 'This email link is expired or already used. Request a fresh link from this app.';
+  if (/signup|signups.*disabled|disabled/i.test(msg)) return 'Email sign-up is disabled in Supabase. Enable Email in Authentication -> Providers, or continue in guest mode.';
   return msg;
 }
 
 function isPasswordRecoveryUrl() {
   const { search, hash } = authUrlParams();
-  return search.get('type') === 'recovery' || hash.get('type') === 'recovery';
+  return authFlowMarker() === 'recovery' || search.get('type') === 'recovery' || hash.get('type') === 'recovery';
+}
+
+function isConfirmationUrl() {
+  const { search, hash } = authUrlParams();
+  const type = (search.get('type') || hash.get('type') || '').toLowerCase();
+  return authFlowMarker() === 'confirm' || ['signup', 'email', 'email_change', 'invite'].includes(type);
+}
+
+function hasAuthExchangeTokens() {
+  const { search, hash } = authUrlParams();
+  return ['code', 'token_hash', 'access_token', 'refresh_token'].some(key => search.has(key) || hash.has(key));
 }
 
 function clearAuthUrlTokens() {
-  if (!history.replaceState || (location.protocol !== 'http:' && location.protocol !== 'https:')) return;
-  history.replaceState(null, document.title, location.pathname);
+  if (!history.replaceState) return;
+  const url = currentHttpUrl();
+  if (!url) return;
+  ['code', 'token_hash', 'type', 'taint_auth', 'error', 'error_code', 'error_description', 'msg', 'provider_token', 'provider_refresh_token', 'expires_in', 'expires_at'].forEach(key => {
+    url.searchParams.delete(key);
+  });
+  url.hash = '';
+  history.replaceState(null, document.title, `${url.pathname}${url.search}`);
 }
 
 function updateAuthProviderUI() {
@@ -3907,26 +4089,30 @@ function normalizeAuthEmail(email) {
 async function authSignUp(name, email, password) {
   if (supabaseClient) {
     const options = { data:{ name, username:name, acknowledgement:'Account created. Password is never sent by email.' } };
-    const redirectTo = authRedirectTo();
+    const redirectTo = authRedirectTo('confirm');
     if (redirectTo) options.emailRedirectTo = redirectTo;
     const {data,error} = await supabaseClient.auth.signUp({
-      email,
+      email: normalizeAuthEmail(email),
       password,
       options
     });
     if (error) throw new Error(authFriendlyError(error, 'email'));
     if (!data.user) throw new Error('Supabase did not create the account. Check Email provider/sign-up settings, or sign in if this email already exists.');
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new Error('This email is already registered. Sign in or use forgot password.');
+    }
     const pendingConfirmation = !data.session;
     if (pendingConfirmation) notify('Check your email to confirm the account before signing in.', 'success', 'Account created');
-    return {id:data.user?.id,name,email,provider:'supabase',pendingConfirmation};
+    return {id:data.user?.id,name,email:normalizeAuthEmail(email),provider:'supabase',pendingConfirmation};
   }
   return {...(await localSignUp(name,email,password)),provider:'local'};
 }
 async function authSignIn(email, password) {
   if (supabaseClient) {
-    const {data,error} = await supabaseClient.auth.signInWithPassword({email,password});
+    const {data,error} = await supabaseClient.auth.signInWithPassword({email:normalizeAuthEmail(email),password});
     if (error) throw new Error(authFriendlyError(error, 'email'));
     const u=data.user;
+    if (!u) throw new Error('Supabase did not return a signed-in user. Try again, or reset your password.');
     return {id:u.id,name:u.user_metadata?.name||email.split('@')[0],email:u.email,provider:'supabase'};
   }
   return {...(await localSignIn(email,password)),provider:'local'};
@@ -3934,7 +4120,7 @@ async function authSignIn(email, password) {
 async function authSendPasswordReset(email) {
   if (!supabaseClient) throw new Error('Password reset email needs Supabase configured. Local-only accounts are stored on this device.');
   const normalizedEmail = normalizeAuthEmail(email);
-  const redirectTo = authRedirectTo();
+  const redirectTo = authRedirectTo('recovery');
   if (!redirectTo) throw new Error('Password reset needs a configured https redirect URL in supabase-config.js.');
   if (authResetInFlightEmail === normalizedEmail) throw new Error('A reset link is already being sent for this email. Please wait a moment.');
   const elapsed = Date.now() - authLastResetRequest.at;
@@ -3983,27 +4169,27 @@ async function authSignInGoogle() {
   return authSignInOAuth('google');
 }
 async function authSignInOAuth(provider) {
-  if (!supabaseClient) { showAuthError('Cloud sign-in needs Supabase configured. Use email or continue as guest.'); return; }
-  if (!isOAuthProviderEnabled(provider)) { showAuthError(`${providerLabel(provider)} sign-in is not enabled for this app. Use email/password or continue as guest.`); return; }
-  const redirectTo = authRedirectTo();
-  if (!redirectTo) { showAuthError('Social sign-in needs the app hosted on http(s). Use email/password locally or continue as guest.'); return; }
+  if (!supabaseClient) { showAuthError('Cloud sign-in needs Supabase configured. Use email or continue as guest.', { toast:true }); return; }
+  if (!isOAuthProviderEnabled(provider)) { showAuthError(`${providerLabel(provider)} sign-in is not enabled for this app. Use email/password or continue as guest.`, { toast:true }); return; }
+  const redirectTo = authRedirectTo('signin');
+  if (!redirectTo) { showAuthError('Social sign-in needs the app hosted on http(s). Use email/password locally or continue as guest.', { toast:true }); return; }
   const { error } = await supabaseClient.auth.signInWithOAuth({
     provider,
     options:{ redirectTo }
   });
-  if (error) showAuthError(authFriendlyError(error, provider));
+  if (error) showAuthError(authFriendlyError(error, provider), { toast:true });
 }
 async function authSignInSSO(domain) {
-  if (!supabaseClient) { showAuthError('Enterprise SSO needs Supabase configured.'); return; }
-  if (!isEnterpriseSsoEnabled()) { showAuthError('Enterprise SSO is not enabled for this app. Use email/password or continue as guest.'); return; }
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain || '')) { showAuthError('Enter your company domain, e.g. company.com.'); return; }
-  const redirectTo = authRedirectTo();
-  if (!redirectTo) { showAuthError('Enterprise SSO needs the app hosted on http(s).'); return; }
+  if (!supabaseClient) { showAuthError('Enterprise SSO needs Supabase configured.', { toast:true }); return; }
+  if (!isEnterpriseSsoEnabled()) { showAuthError('Enterprise SSO is not enabled for this app. Use email/password or continue as guest.', { toast:true }); return; }
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain || '')) { showAuthError('Enter your company domain, e.g. company.com.', { toast:true }); return; }
+  const redirectTo = authRedirectTo('signin');
+  if (!redirectTo) { showAuthError('Enterprise SSO needs the app hosted on http(s).', { toast:true }); return; }
   const { error } = await supabaseClient.auth.signInWithSSO({
     domain,
     options:{ redirectTo }
   });
-  if (error) showAuthError(authFriendlyError(error, 'SSO'));
+  if (error) showAuthError(authFriendlyError(error, 'SSO'), { toast:true });
 }
 async function authSignOut() {
   try {
@@ -4011,7 +4197,11 @@ async function authSignOut() {
   } catch (e) {
     console.warn('TAINT Supabase sign-out skipped:', e.message);
   }
-  localSignOut(); currentUser=null; updateAuthUI(null);
+  localSignOut();
+  rememberAuthSkip(false);
+  currentUser=null;
+  updateAuthUI(null);
+  showAuthOverlay('signin');
   notify('Signed out.', 'success', 'Account');
 }
 async function restoreSession() {
@@ -4113,6 +4303,9 @@ function updateAuthUI(user) {
   if(details){ details.textContent=isGuest?'Sign in to view details':'Account details'; details.disabled=false; }
   if(logout){ logout.textContent=isGuest?'Sign In / Sign Up':'Logout'; }
   updateWelcomeCard(user);
+  syncSignedInOnlyUI();
+  if (user && typeof calculate === 'function') calculate();
+  if (!user && typeof renderSignedOutCommuteState === 'function') renderSignedOutCommuteState();
   syncAdminVisibility();
   refreshAllRecentCalculations();
 }
@@ -4133,12 +4326,29 @@ function showAuthOverlay(mode){
   document.getElementById('authOverlay').classList.remove('hidden');
 }
 function hideAuthOverlay(){ document.getElementById('authOverlay').classList.add('hidden'); }
-function showAuthError(msg){ const e=document.getElementById('authError'); if(e) e.textContent=msg; }
-function showAuthSuccess(msg){
+function showAuthError(msg, { toast=false, title='Account' }={}) {
+  const message = msg || '';
+  const e=document.getElementById('authError');
+  const s=document.getElementById('authSuccess');
+  if(e) { e.textContent=message; e.hidden=!message; }
+  if(message && s) { s.textContent=''; s.hidden=true; }
+  if(message && toast) notify(message, 'error', title);
+}
+function showAuthSuccess(msg, { toast=false, title='Account' }={}){
+  const message = msg || '';
   const e=document.getElementById('authSuccess');
-  if(!e) return;
-  e.textContent = msg || '';
-  e.hidden = !msg;
+  const err=document.getElementById('authError');
+  if(e) { e.textContent = message; e.hidden = !message; }
+  if(message && err) { err.textContent=''; err.hidden=true; }
+  if(message && toast) notify(message, 'success', title);
+}
+function showAuthFailure(error, title='Account') {
+  showAuthError(authFriendlyError(error, 'email'), { toast:true, title });
+}
+function showAuthLinkNoticeOnce(message, title='Account') {
+  if (authLinkNoticeShown) return;
+  authLinkNoticeShown = true;
+  showAuthSuccess(message, { toast:true, title });
 }
 
 let authMode='signin';
@@ -4187,6 +4397,14 @@ function setAuthMode(mode) {
 }
 document.querySelectorAll('.auth-tab').forEach(tab=>{
   tab.addEventListener('click',()=> setAuthMode(tab.dataset.tab));
+});
+['authName', 'authEmail', 'authPassword', 'authConfirmPassword', 'authSsoDomain'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    setFieldInvalid(el, '');
+    showAuthError('');
+  });
 });
 
 function validateAuthForm(mode, { name='', email='', password='', confirmPassword='' }={}) {
@@ -4250,7 +4468,7 @@ document.addEventListener('click', async e => {
       await authSendPasswordReset(checked.email);
       showAuthSuccess(`A secure password reset email has been sent to ${checked.email}. Follow the link, then create a new password here.`);
       notify('Password reset email sent.', 'success', 'Account');
-    } catch(err){ showAuthError(err.message); }
+    } catch(err){ showAuthFailure(err); }
     finally{ btn.disabled=false; btn.textContent=authSubmitText(); }
     return;
   }
@@ -4268,7 +4486,7 @@ document.addEventListener('click', async e => {
       updateAuthUI(currentUser);
       hideAuthOverlay();
       notify('Password updated. You are signed in.', 'success', 'Account');
-    } catch(err){ showAuthError(err.message); }
+    } catch(err){ showAuthFailure(err); }
     finally{ btn.disabled=false; btn.textContent=authSubmitText(); }
     return;
   }
@@ -4288,7 +4506,7 @@ document.addEventListener('click', async e => {
     await sbUpsertProfile(currentUser);
     updateAuthUI(currentUser); hideAuthOverlay();
     notify(authMode==='signup' ? 'Account ready. Password was stored securely, not emailed.' : 'Signed in successfully.', 'success', 'Account');
-  } catch(err){ showAuthError(err.message); }
+  } catch(err){ showAuthFailure(err); }
   finally{ btn.disabled=false; btn.textContent=authSubmitText(); }
 });
 
@@ -4362,12 +4580,17 @@ if(supabaseClient){
         authRecoveryMode = true;
         updateAuthUI(currentUser);
         showAuthOverlay('reset');
-        showAuthSuccess('Email verified. Create a new password to finish resetting your account.');
+        showAuthLinkNoticeOnce('Email verified. Create a new password to finish resetting your account.', 'Password reset');
+        clearAuthUrlTokens();
         return;
       }
       if (authRecoveryMode || authMode === 'reset') return;
       sbUpsertProfile(currentUser);
       updateAuthUI(currentUser); hideAuthOverlay();
+      if (isConfirmationUrl()) {
+        showAuthLinkNoticeOnce('Email confirmed. You are signed in.', 'Account confirmed');
+        clearAuthUrlTokens();
+      }
     }
   });
 }
@@ -4378,17 +4601,40 @@ async function initAuth(){
   if (linkError) {
     updateAuthUI(currentUser);
     showAuthOverlay('forgot');
-    showAuthError(linkError);
+    showAuthError(linkError, { toast:true, title:'Email link failed' });
     clearAuthUrlTokens();
     return;
   }
   const skipped   = hasAuthSkip();
   const hasSession= await restoreSession();
   if (supabaseClient && isPasswordRecoveryUrl()) {
-    authRecoveryMode = true;
-    if (currentUser) updateAuthUI(currentUser);
-    showAuthOverlay('reset');
-    showAuthSuccess('Create a new password to finish resetting your account.');
+    if (hasSession || hasAuthExchangeTokens()) {
+      authRecoveryMode = true;
+      if (currentUser) updateAuthUI(currentUser);
+      showAuthOverlay('reset');
+      showAuthLinkNoticeOnce('Create a new password to finish resetting your account.', 'Password reset');
+      if (hasSession) clearAuthUrlTokens();
+    } else {
+      updateAuthUI(null);
+      showAuthOverlay('forgot');
+      showAuthError('Use the latest password reset email link, or request a fresh reset link from this app.', { toast:true, title:'Password reset' });
+      clearAuthUrlTokens();
+    }
+    return;
+  }
+  if (supabaseClient && isConfirmationUrl()) {
+    if (hasSession) {
+      sbUpsertProfile(currentUser);
+      updateAuthUI(currentUser);
+      hideAuthOverlay();
+      showAuthLinkNoticeOnce('Email confirmed. You are signed in.', 'Account confirmed');
+      clearAuthUrlTokens();
+    } else {
+      updateAuthUI(null);
+      showAuthOverlay('signin');
+      showAuthLinkNoticeOnce('Email confirmation was received. Sign in with your email and password to continue.', 'Account confirmed');
+      if (!hasAuthExchangeTokens()) clearAuthUrlTokens();
+    }
     return;
   }
   if(hasSession){ sbUpsertProfile(currentUser); updateAuthUI(currentUser); hideAuthOverlay(); }
@@ -4469,6 +4715,7 @@ function wpUpdateSplitSum() {
   document.getElementById(id)?.addEventListener('input', wpUpdateSplitSum));
 
 function calculateWorkplace() {
+  if (!requireSignedInForAction('calculate')) return;
   const employees  = Math.max(1, wpV('wpEmployees'));
   const days       = Math.max(1, wpV('wpDays'));
   const sector     = wpS('wpSector');
@@ -4777,6 +5024,7 @@ function hmV(id){ return parseFloat(document.getElementById(id)?.value||0)||0; }
 function hmS(id){ return document.getElementById(id)?.value||''; }
 
 function calculateHome(){
+  if (!requireSignedInForAction('calculate')) return;
   const occupants  = Math.max(1, hmV('hmOccupants'));
   const gridKgKwh  = city().grid;
 
@@ -5080,7 +5328,7 @@ function buildSidebar() {
       {mode:'admin',     icon:'⚙️', label:'Taint Admin', adminOnly:true},
     ];
     sbModes.innerHTML = modes.map(m =>
-      `<button class="sb-mode-btn${m.mode==='commute'?' active':''}" data-mode="${m.mode}"${m.adminOnly?' data-admin-only="true" hidden':''}>
+      `<button class="sb-mode-btn${m.mode==='commute'?' active':''}" data-mode="${m.mode}"${m.adminOnly?' data-admin-only="true" hidden':''}${m.mode==='buy'?' data-signed-in-only="true" hidden':''}>
          ${m.icon} ${m.label}
        </button>`
     ).join('');
@@ -5097,8 +5345,7 @@ function buildSidebar() {
 
   syncCityControls(currentCityKey);
   updateSbCity();
-  updateSbWeather();
-  updateSbStats();
+  syncSignedInOnlyUI();
   syncAdminVisibility();
 }
 
@@ -5114,7 +5361,7 @@ function updateSbWeather() {
   const aqiEl    = document.getElementById('aqiVal');
   const aqiEmoji = document.getElementById('aqiEmoji')?.textContent || '🌫️';
   el.innerHTML = `
-    <div style="font-size:11px;color:var(--hi);margin-bottom:4px;text-transform:uppercase;letter-spacing:.07em">Live · ${city().name}</div>
+    <div style="font-size:11px;color:var(--hi);margin-bottom:4px;text-transform:uppercase;letter-spacing:.07em">${city().name}</div>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="font-size:20px;font-weight:700;color:var(--tx)">${tempVal}°C</span>
       <span style="font-size:13px">${aqiEmoji} AQI ${aqiEl?.textContent||'—'}</span>
@@ -5168,6 +5415,10 @@ function setMode(mode) {
     } else {
       notify('Taint Admin is restricted to the configured Supabase owner.', 'warn', 'Admin');
     }
+    mode = 'commute';
+  }
+  if (mode === 'buy' && !isSignedInUser()) {
+    requireSignedInForAction('buy');
     mode = 'commute';
   }
   document.querySelectorAll('.mode-tab').forEach(b =>
@@ -5465,6 +5716,7 @@ function mtSyncToolFootprint() {
 
 /* Calculate full My Taint profile from imported mode data or wizard inputs */
 function mtCalculateProfile() {
+  if (!requireSignedInForAction('calculate')) return;
   const cityKey = document.getElementById('mtCity')?.value || currentCityKey;
   setCity(cityKey);
   mtImportSavedModeResults({ silent:true });
@@ -5960,7 +6212,7 @@ function tbBuyButton(platform, url, productId) {
   if (!safeUrl) return '';
   const labels = { amazon:'Amazon', flipkart:'Flipkart', brand:'Brand Site' };
   const label = labels[platform] || platform;
-  return `<a class="tb-buy-btn ${platform}" href="${safeUrl}" target="_blank" rel="noopener noreferrer sponsored" onclick="tbTrack('${platform}','${productId}')">${label}</a>`;
+  return `<a class="tb-buy-btn ${platform}" href="${safeUrl}" target="_blank" rel="noopener noreferrer sponsored" onclick="return tbTrack('${platform}','${productId}')">${label}</a>`;
 }
 
 /* ── Render product cards ── */
@@ -5997,7 +6249,7 @@ function tbRenderGrid(products) {
       </div>
       <div class="tb-commission">${p.commission}</div>
       <div class="tb-buy-row">${buyBtns}</div>
-      <button class="tb-owned-btn" type="button" onclick="tbRecordProductStatus('bought','${p.id}')">Mark Bought</button>
+      <button class="tb-owned-btn" type="button" onclick="return tbRecordProductStatus('bought','${p.id}')">Mark Bought</button>
     </div>`;
   }).join('');
   document.getElementById('tbCount').textContent = `${products.length} product${products.length!==1?'s':''}`;
@@ -6026,8 +6278,9 @@ function tbStoreLocalStatus(record) {
 }
 
 function tbRecordProductStatus(status, productId, platform='manual') {
+  if (!requireSignedInForAction('buy')) return false;
   const product = tbProductById(productId);
-  if (!product) return;
+  if (!product) return false;
   const normalizedStatus = status === 'bought' ? 'bought' : 'checked_out';
   const record = {
     product_id : product.id,
@@ -6051,9 +6304,11 @@ function tbRecordProductStatus(status, productId, platform='manual') {
     metadata    : { eco:product.eco, saving:product.saving, tags:product.tags, source:'taint_buy' }
   }, 'functional');
   if (normalizedStatus === 'bought') notify(`${product.name} added to your bought list.`, 'success', 'Taint Buy');
+  return true;
 }
 
 function tbTrack(platform, productId) {
+  if (!requireSignedInForAction('buy')) return false;
   const product = tbProductById(productId);
   try {
     const key = `tb_click_${Date.now()}`;
@@ -6067,6 +6322,7 @@ function tbTrack(platform, productId) {
     metadata  : product ? { productName:product.name, priceNum:product.priceNum || 0 } : {}
   }, 'functional');
   tbRecordProductStatus('checked_out', productId, platform);
+  return true;
 }
 
 /* ── Filter + sort ── */
@@ -6168,6 +6424,7 @@ Pick the 3 that would most reduce MY specific footprint.`
 /* Initialise grid on first show */
 let tbInitialised = false;
 function tbInit() {
+  if (!requireSignedInForAction('buy')) return;
   if (tbInitialised) return;
   tbInitialised = true;
   tbApplyFilter();

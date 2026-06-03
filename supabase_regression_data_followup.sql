@@ -40,8 +40,8 @@ alter table public.product_purchases enable row level security;
 drop policy if exists "insert product purchases" on public.product_purchases;
 create policy "insert product purchases"
 on public.product_purchases for insert
-to anon, authenticated
-with check (auth_user_id is null or auth_user_id = (select auth.uid()));
+to authenticated
+with check (auth_user_id = (select auth.uid()));
 
 drop policy if exists "read own product purchases" on public.product_purchases;
 create policy "read own product purchases"
@@ -77,7 +77,8 @@ as $$
   end;
 $$;
 
-grant select, insert on public.product_purchases to anon, authenticated;
+revoke all on public.product_purchases from anon;
+grant select, insert on public.product_purchases to authenticated;
 revoke all on function public.taint_account_email_exists(text) from public;
 grant execute on function public.taint_account_email_exists(text) to anon, authenticated;
 

@@ -17,6 +17,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 - `supabase_business_storage_migration.sql` - business entities, members, locations, app file metadata, and private JSON/media storage buckets.
 - `supabase_security_advisor_followup.sql` - security follow-up for helper functions and visitor device reads.
 - `supabase_policy_performance_followup.sql` - policy split and index follow-up for advisor findings.
+- `supabase_user_owned_logs_rls_followup.sql` - authenticated-only RLS hardening for user-owned calculation, route, product, and process rows.
 - `supabase_sensitive_data_encryption.sql` - Supabase Vault-backed encrypted sensitive user records and RPC helpers.
 - `supabase_frontend_connection.md` - setup steps for connecting the front end to Supabase.
 - `dependency-security-scan.md` - dependency scan and vulnerability mitigation notes.
@@ -28,7 +29,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 2. Run `taint_supabase_schema.sql` in SQL Editor.
 3. Run `supabase_business_storage_migration.sql`.
 4. Run `supabase_sensitive_data_encryption.sql`.
-5. Run `supabase_security_advisor_followup.sql`, `supabase_policy_performance_followup.sql`, then `supabase_regression_data_followup.sql`.
+5. Run `supabase_security_advisor_followup.sql`, `supabase_policy_performance_followup.sql`, `supabase_regression_data_followup.sql`, then `supabase_user_owned_logs_rls_followup.sql`.
 6. Paste your Project URL and anon or publishable public key into the `dev` environment in `supabase-config.js`. The checked-in project is treated as development; production settings are supplied only through GitHub repository variables during release promotion.
 7. Open the app and run `await window.taintCheckSupabase()` in the browser console.
 
@@ -36,7 +37,7 @@ Do not put the Supabase `service_role` key in any front-end file.
 
 ## Hosting
 
-For local testing, serve the folder over HTTP so Auth redirects and browser storage behave like production:
+For local testing, run the server from the repository folder and open the app over HTTP. Do not open `index.html` with `file://`, because Supabase Auth redirects and browser storage do not behave like production on local files:
 
 ```powershell
 python -m http.server 8787
@@ -44,9 +45,11 @@ python -m http.server 8787
 
 Then open `http://127.0.0.1:8787/index.html`.
 
-For production, deploy `index.html`, `supabase-config.js`, `assets/`, and `vendor/`. The GitHub Pages workflow builds a clean `_site` bundle from only those files, so repository SQL/docs are not published with the site. In Supabase Authentication -> URL Configuration, set the Site URL to `https://sabarivasantkmech-blip.github.io/taint/index.html` and add `https://sabarivasantkmech-blip.github.io/taint/**` as an allowed Redirect URL.
+For production, deploy `index.html`, `supabase-config.js`, `assets/`, and `vendor/`. The GitHub Pages workflow builds a clean `_site` bundle from only those files, so repository SQL/docs are not published with the site. In Supabase Authentication -> URL Configuration, set the Site URL to `https://sabarivasantkmech-blip.github.io/taint/index.html` and add `https://sabarivasantkmech-blip.github.io/taint/**` as an allowed Redirect URL so confirmation and recovery links can return with their flow markers.
 
 Google, GitHub, and enterprise SSO buttons stay hidden until enabled in both Supabase Authentication -> Providers and `supabase-config.js`. Taint Admin stays hidden unless the signed-in Supabase user matches `auth.adminOwnerEmails` or `auth.adminOwnerUserIds`.
+
+Carbon footprint calculations and Taint Buy are signed-in user features. Guests can review the app shell and sign in or sign up, but calculate/save actions and Buy links prompt for authentication before running.
 
 ```js
 environment: 'dev',
@@ -66,7 +69,7 @@ Forgot password uses Supabase's secure reset-link flow:
 1. User clicks `Forgot password?`.
 2. The app validates the address against Supabase Auth through `taint_account_email_exists`.
 3. User receives one Supabase reset email per cooldown window.
-4. The reset link opens the configured hosted app.
+4. The reset link opens the configured hosted app with `taint_auth=recovery`.
 5. User enters a new password in the TAINT reset form.
 
 For production email delivery, configure Supabase Authentication -> SMTP settings and add your deployed URL in Authentication -> URL Configuration.

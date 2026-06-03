@@ -68,7 +68,7 @@ OAuth and SSO must be tested from `http://localhost`, `127.0.0.1`, or a deployed
 
 Taint Admin is an owner-only UI surface. It appears only when a Supabase-authenticated user matches `adminOwnerEmails` or `adminOwnerUserIds` in `supabase-config.js`.
 
-Run `supabase_regression_data_followup.sql` after the base schema files to enable strict forgot-password email validation, profile usernames, and Taint Buy checkout/bought history.
+Run `supabase_regression_data_followup.sql` after the base schema files to enable strict forgot-password email validation, profile usernames, and Taint Buy checkout/bought history. Then run `supabase_user_owned_logs_rls_followup.sql` so calculation, route, profile, product, and process rows are writable/readable only by the authenticated owner.
 
 ## Sign-Up Email And Forgot Password
 
@@ -79,13 +79,14 @@ Sign-up:
 1. User enters name, email, and password.
 2. `supabase.auth.signUp()` creates the user and sends the Supabase confirmation/acknowledgement email when email confirmation is enabled.
 3. User clicks the confirmation link and returns to the configured redirect URL.
+4. The app recognizes `taint_auth=confirm`, restores the Supabase session, and shows an account-confirmed notice.
 
 Forgot password:
 
 1. User clicks `Forgot password?`.
 2. The app calls `taint_account_email_exists(email)` to verify that the address belongs to a Supabase Auth user.
 3. The app calls `supabase.auth.resetPasswordForEmail(email, { redirectTo })` once per cooldown window.
-4. User follows the email link back to the configured `siteUrl`.
+4. User follows the email link back to the configured `siteUrl` with `taint_auth=recovery`.
 5. The app shows a new-password form and calls `supabase.auth.updateUser({ password })`.
 
 For reliable production emails, configure Supabase Authentication -> SMTP Settings. The default Supabase email service is suitable for testing and has limits.
@@ -131,5 +132,7 @@ Add these Redirect URLs:
 ```text
 https://sabarivasantkmech-blip.github.io/taint/**
 ```
+
+The app adds `taint_auth=confirm`, `taint_auth=recovery`, or `taint_auth=signin` to Supabase redirects so the single-page UI can open the correct auth state. The wildcard redirect above is required for those query-marked links; for a custom production domain, add the equivalent `https://your-domain/**` allow-list entry.
 
 Do not point Supabase email redirects at `www.taint.com` unless that custom domain is owned, verified in GitHub Pages, and serving this repository over HTTPS.

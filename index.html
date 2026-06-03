@@ -49,7 +49,7 @@
 <script src="./vendor/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="./assets/js/leaflet-popup-sanitize.js?v=20260527" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
-<!-- Supabase used for global stats (no SDK needed — plain fetch) -->
+<!-- Supabase used for Auth and persistence. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.1/dist/umd/supabase.min.js" integrity="sha384-dzQgxMPp/h+N0t5qDf6Bp516wKZr3pXgGMpA7/ZM6tiWkqYo90N060L03dxnZ8Tf" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
 <link rel="stylesheet" href="./assets/css/app.css?v=20260601-prod-branding"/>
@@ -132,7 +132,21 @@
     <h2><span id="welcomeGreeting">Good day</span>, <span id="welcomeUserName">Guest</span></h2>
     <p id="welcomeMessage">Your TAINT workspace is ready for city commute, home, workplace, and purchase footprint accounting.</p>
   </div>
-  <div class="welcome-chip" id="welcomeSessionChip">Guest mode</div>
+  <div class="welcome-side">
+    <div class="welcome-chip" id="welcomeSessionChip">Guest mode</div>
+    <div class="welcome-fuel-card" aria-label="Today's fuel cost rates">
+      <div class="welcome-fuel-head">
+        <span>Today fuel rates</span>
+        <b id="welcomeFuelSource">Fallback</b>
+      </div>
+      <div class="welcome-fuel-grid">
+        <span>Petrol <b id="welcomePetrolRate">₹--/L</b></span>
+        <span>Diesel <b id="welcomeDieselRate">₹--/L</b></span>
+        <span>CNG <b id="welcomeCngRate">₹--/kg</b></span>
+        <span>EV <b id="welcomeElecRate">₹--/kWh</b></span>
+      </div>
+    </div>
+  </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -146,8 +160,6 @@
     <div class="sb-cities" id="sbCities"></div>
     <div class="sb-label" style="margin-top:16px">Mode</div>
     <nav class="sb-modes" id="sbModes"></nav>
-    <div class="sb-weather" id="sbWeather"></div>
-    <div class="sb-mini-stats" id="sbMiniStats"></div>
     <!-- User state at bottom of sidebar -->
     <div class="sb-user" id="sbUser">
       <div class="sb-user-row" id="sbUserRow">
@@ -215,7 +227,7 @@
     <button class="mode-tab"        id="modeWorkplace" data-mode="workplace">🏢 My Workplace</button>
     <button class="mode-tab"        id="modeHome"      data-mode="home">🏠 My Home</button>
     <button class="mode-tab"        id="modeTaint"     data-mode="taint">🌿 My Taint</button>
-    <button class="mode-tab"        id="modeBuy"       data-mode="buy">🛒 Taint Buy</button>
+    <button class="mode-tab"        id="modeBuy"       data-mode="buy" data-signed-in-only="true" hidden>🛒 Taint Buy</button>
     <button class="mode-tab"        id="modeAdmin"     data-mode="admin" data-admin-only="true" hidden>Taint Admin</button>
   </div>
 
@@ -421,7 +433,10 @@
   </div>
 
   <!-- ── EMISSIONS OUTPUT ── -->
-  <button class="wp-calc-btn compact-calc" id="commuteCalcBtn" style="margin-bottom:8px">Save Commute Result</button>
+  <div class="calc-actions">
+    <button class="wp-calc-btn compact-calc" id="commuteCalcBtn">Save Commute Result</button>
+    <button class="reset-action-btn" id="commuteResetBtn" type="button">Reset</button>
+  </div>
 
   <div class="card">
     <div class="card-title">Emissions output</div>
@@ -627,17 +642,6 @@
     <div class="price-updated" id="priceUpdated"></div>
   </div>
 
-  <!-- ── MONTHLY USAGE TRACKER ── -->
-  <div class="card">
-    <div class="card-title">My usage tracker — this device</div>
-    <div class="month-chart" id="monthChart"></div>
-    <div class="month-lbls" id="monthLbls"></div>
-    <div class="tracker-foot">
-      <span>Total calculations: <strong id="totalLocal">0</strong> <span id="firstSeenLbl" style="font-size:11px"></span></span>
-      <button class="reset-btn" id="resetBtn" title="Restore calculator defaults and clear local usage counters">Reset defaults</button>
-    </div>
-  </div>
-
   </div><!-- /commuteSection -->
 
   <!-- ════════════════════════════════════════════
@@ -647,24 +651,7 @@
 
   <div class="card">
     <div class="card-title">Taint Admin overview <span class="admin-owner-pill" id="adminAccessState">Owner only</span></div>
-    <div class="admin-metrics">
-      <div class="admin-metric">
-        <div class="admin-metric-label">Unique users</div>
-        <div class="admin-metric-val" id="adminUsers">—</div>
-        <div class="admin-metric-sub" id="adminUsersLbl">waiting for stats</div>
-      </div>
-      <div class="admin-metric">
-        <div class="admin-metric-label">Calculation count</div>
-        <div class="admin-metric-val" id="adminCalcs">—</div>
-        <div class="admin-metric-sub" id="adminCalcsLbl">all time</div>
-      </div>
-      <div class="admin-metric">
-        <div class="admin-metric-label">This month</div>
-        <div class="admin-metric-val" id="adminMonth">0</div>
-        <div class="admin-metric-sub">on this device</div>
-      </div>
-    </div>
-    <div class="admin-note">Admin mode contains technical factors, scientific references, and source audit notes. Hosting instructions are intentionally kept out of the app UI and remain in the repository docs.</div>
+    <div class="admin-note">Admin mode contains technical factors, scientific references, source audit notes, and the City Vision proxy. Operational hosting instructions stay in the repository docs.</div>
   </div>
 
   <div class="card admin-layer-card">
@@ -765,24 +752,6 @@
         <div class="gap-item"><b>Gap fixed:</b> vehicle comparisons cite ICCT's India life-cycle work and IPCC AR6 transport context instead of relying only on raw table factors.</div>
         <div class="gap-item"><b>Gap fixed:</b> PUC is treated as a maintenance and tailpipe-pollutant proxy. It is not used as a direct CO₂ instrument.</div>
         <div class="gap-item warn"><b>Remaining approximation:</b> city fleet mix, live congestion emissions, real AQI chemistry, and satellite-impact visuals are modeled estimates. Admin factors should be recalibrated when verified city fleet or remote-sensing data is available.</div>
-      </div>
-    </details>
-  </div>
-
-  <!-- ── HOSTING GUIDE ── -->
-  <div class="card" hidden aria-hidden="true">
-    <details>
-      <summary>How to host this page &amp; enable global stats</summary>
-      <div class="host-steps">
-        <div class="host-step"><span class="hn">1</span><div>Test locally over HTTP, not <code style="color:var(--blue);font-family:'DM Mono',monospace">file://</code>, so Supabase Auth redirects and browser storage behave like production.<div class="code-blk">python -m http.server 8787</div><div class="code-blk">http://127.0.0.1:8787/index.html</div></div></div>
-        <div class="host-step"><span class="hn">2</span><div>Deploy the static site from this repository:<div class="code-blk">GitHub Pages: Settings → Pages → Deploy from branch → main / root</div><div class="code-blk">Netlify: drag &amp; drop this folder or connect the GitHub repo</div><div class="code-blk">Vercel: import the GitHub repo as a static project</div></div></div>
-        <div class="host-step"><span class="hn">3</span><div>
-          Create a free Supabase project for global tracking:<br>
-          <div class="code-blk">supabase.com → New project → SQL Editor → run setup SQL → paste URL + anon/publishable key</div>
-        </div></div>
-        <div class="host-step"><span class="hn">4</span><div>Paste your Project URL and anon/publishable key into <code style="color:var(--blue);font-family:'DM Mono',monospace">supabase-config.js</code>.</div></div>
-        <div class="host-step"><span class="hn">5</span><div>Run <code style="color:var(--blue);font-family:'DM Mono',monospace">taint_supabase_schema.sql</code>, <code style="color:var(--blue);font-family:'DM Mono',monospace">supabase_business_storage_migration.sql</code>, <code style="color:var(--blue);font-family:'DM Mono',monospace">supabase_sensitive_data_encryption.sql</code>, and both advisor follow-up SQL files in Supabase SQL Editor.</div></div>
-        <div class="host-step"><span class="hn">6</span><div>In Supabase Authentication → URL Configuration, set the Site URL and Redirect URLs to your hosted domain. Enable Google, GitHub, or enterprise SSO in Authentication → Providers only when those buttons should appear.</div></div>
       </div>
     </details>
   </div>
@@ -962,7 +931,10 @@
   </div>
 
   <!-- WP Calculate button -->
-  <button class="wp-calc-btn" id="wpCalcBtn">Calc Workplace</button>
+  <div class="calc-actions">
+    <button class="wp-calc-btn" id="wpCalcBtn">Calc Workplace</button>
+    <button class="reset-action-btn" id="wpResetBtn" type="button">Reset</button>
+  </div>
 
   <!-- WP Results -->
   <div class="card" id="wpResultCard" style="display:none">
@@ -1284,7 +1256,10 @@
   </div>
 
   <!-- HM Calculate -->
-  <button class="wp-calc-btn" id="hmCalcBtn">Calc Home</button>
+  <div class="calc-actions">
+    <button class="wp-calc-btn" id="hmCalcBtn">Calc Home</button>
+    <button class="reset-action-btn" id="hmResetBtn" type="button">Reset</button>
+  </div>
 
   <!-- HM Results -->
   <div class="card" id="hmResultCard" style="display:none">
@@ -1572,6 +1547,7 @@
   <!-- Wizard navigation -->
   <div class="mt-action-row" id="mtCalcAction" hidden>
     <button class="wp-calc-btn compact-calc" id="mtCalcBtn">Calculate My Taint</button>
+    <button class="reset-action-btn" id="mtResetBtn" type="button">Reset</button>
   </div>
   <div class="mt-nav">
     <button class="mt-nav-btn prev" id="mtPrevBtn" disabled>← Previous</button>
@@ -1856,8 +1832,8 @@
         <label>Confirm new password</label>
         <input type="password" id="authConfirmPassword" class="auth-input" placeholder="Re-enter new password" autocomplete="new-password" maxlength="72"/>
       </div>
-      <div class="auth-error" id="authError"></div>
-      <div class="auth-success" id="authSuccess" hidden></div>
+      <div class="auth-error" id="authError" role="alert" aria-live="assertive" hidden></div>
+      <div class="auth-success" id="authSuccess" role="status" aria-live="polite" hidden></div>
       <button class="auth-submit" id="authSubmit">Sign In</button>
       <div class="auth-help-row">
         <button class="auth-link-btn" id="authForgotBtn" type="button">Forgot password?</button>
