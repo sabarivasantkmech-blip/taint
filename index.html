@@ -37,7 +37,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.anthropic.com https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.waqi.info https://api.open-meteo.com https://*.supabase.co https://formsubmit.co https://server.arcgisonline.com; form-action 'self' https://formsubmit.co; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.waqi.info https://api.open-meteo.com https://*.supabase.co https://formsubmit.co https://server.arcgisonline.com; form-action 'self' https://formsubmit.co; frame-src 'self' blob: data:; worker-src 'none'; object-src 'none'; base-uri 'self';">
 
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>TAINT — Carbon Emissions Calculator</title>
@@ -52,7 +52,7 @@
 <!-- Supabase used for Auth and persistence. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.1/dist/umd/supabase.min.js" integrity="sha384-dzQgxMPp/h+N0t5qDf6Bp516wKZr3pXgGMpA7/ZM6tiWkqYo90N060L03dxnZ8Tf" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
-<link rel="stylesheet" href="./assets/css/app.css?v=20260601-prod-branding"/>
+<link rel="stylesheet" href="./assets/css/app.css?v=20260605-db-report-ui"/>
 
 </head>
 <body>
@@ -71,11 +71,15 @@
     <!-- Brand -->
     <a class="logo" href="#" aria-label="TAINT home">
       <img class="logo-mark" src="./assets/logo1.png" alt="">
-      <span class="logo-text"><span class="logo-name">TAINT</span><span class="logo-city" id="logoCity">Chennai</span></span>
+      <span class="logo-text">
+        <span class="logo-primary"><span class="logo-name">TAINT</span><span class="logo-product">Carbon Emissions Calculator</span></span>
+        <span class="logo-tagline">Taint the Great Job Carefully!</span>
+        <span class="logo-city" id="logoCity">Chennai</span>
+      </span>
     </a>
 
     <!-- Live clock -->
-    <div class="clock-pill" id="clockPill">
+    <div class="clock-pill" id="clockPill" hidden aria-hidden="true">
       <span class="clock-dot"></span>
       <strong id="cTime">--:--:--</strong>
       <span id="cDay">---</span>
@@ -83,7 +87,7 @@
     </div>
 
     <!-- Live temperature (Open-Meteo, no key) -->
-    <div class="temp-chip" id="tempChip" title="Current temperature">
+    <div class="temp-chip" id="tempChip" title="Current temperature" hidden aria-hidden="true">
       <span>🌡️</span>
       <span class="tv" id="tempVal">—</span>
       <span id="tempUnit">°C</span>
@@ -91,7 +95,7 @@
     </div>
 
     <!-- Air quality index -->
-    <div class="aqi-chip" id="aqiChip" title="Air Quality Index">
+    <div class="aqi-chip" id="aqiChip" title="Air Quality Index" hidden aria-hidden="true">
       <span id="aqiEmoji">🌫️</span>
       <span>AQI</span>
       <span class="av" id="aqiVal">—</span>
@@ -101,12 +105,12 @@
     <!-- Language & country -->
     <div class="lang-chip" title="Website language and target region">
       <span>🇮🇳</span>
-      <span>Tamil · English</span>
+      <span>English</span>
       <span style="opacity:.5;font-size:10px">· India</span>
     </div>
 
     <!-- Dark / light theme toggle -->
-    <button class="theme-btn" id="themeBtn">🌙 Dark</button>
+    <button class="theme-btn" id="themeBtn" hidden aria-hidden="true">🌙 Dark</button>
     <div class="account-controls">
       <button class="user-avatar-btn" id="userAvatarBtn" title="Sign in / Account" aria-label="User account">
         <span id="userAvatarInitial">GU</span>
@@ -115,9 +119,29 @@
         <span></span><span></span><span></span>
       </button>
       <div class="account-menu" id="accountMenu" role="menu" aria-label="Account details">
-        <div class="account-menu-title" id="accountMenuName">Guest</div>
+        <div class="account-menu-title" id="accountMenuName">Signed out</div>
         <div class="account-menu-email" id="accountMenuEmail">Not signed in</div>
         <div class="account-menu-meta" id="accountMenuProvider">Local browser</div>
+        <button class="account-menu-action" id="accountPrefsBtn" type="button" aria-expanded="false" aria-controls="accountPreferences">Settings - Preferences</button>
+        <div class="account-preferences" id="accountPreferences" hidden>
+          <div class="account-pref-section">
+            <div class="account-pref-title">Preferences</div>
+            <p>Manage first-party storage used for calculations, profile state and cookie acknowledgement.</p>
+            <div class="account-pref-actions">
+              <button type="button" id="prefCookieNecessaryBtn">Necessary only</button>
+              <button type="button" id="prefCookieAcceptBtn">Accept all</button>
+              <button type="button" id="prefCookieClearBtn">Clear</button>
+            </div>
+          </div>
+          <div class="account-pref-section">
+            <div class="account-pref-title">Theme</div>
+            <p>Choose the display mode for this workspace.</p>
+            <div class="account-pref-actions two">
+              <button type="button" id="prefThemeDark">Dark</button>
+              <button type="button" id="prefThemeLight">Light</button>
+            </div>
+          </div>
+        </div>
         <button class="account-menu-action" id="accountDetailsBtn" type="button">Account details</button>
         <button class="account-menu-action danger" id="accountLogoutBtn" type="button">Logout</button>
       </div>
@@ -129,22 +153,15 @@
 <section class="welcome-card" id="welcomeCard" aria-live="polite">
   <div class="welcome-copy">
     <div class="welcome-kicker" id="welcomeLoginTime">Session starting...</div>
-    <h2><span id="welcomeGreeting">Good day</span>, <span id="welcomeUserName">Guest</span></h2>
+    <h2><span id="welcomeGreeting">Good day</span>, <span id="welcomeUserName">User</span></h2>
     <p id="welcomeMessage">Your TAINT workspace is ready for city commute, home, workplace, and purchase footprint accounting.</p>
   </div>
   <div class="welcome-side">
-    <div class="welcome-chip" id="welcomeSessionChip">Guest mode</div>
-    <div class="welcome-fuel-card" aria-label="Today's fuel cost rates">
-      <div class="welcome-fuel-head">
-        <span>Today fuel rates</span>
-        <b id="welcomeFuelSource">Fallback</b>
-      </div>
-      <div class="welcome-fuel-grid">
-        <span>Petrol <b id="welcomePetrolRate">₹--/L</b></span>
-        <span>Diesel <b id="welcomeDieselRate">₹--/L</b></span>
-        <span>CNG <b id="welcomeCngRate">₹--/kg</b></span>
-        <span>EV <b id="welcomeElecRate">₹--/kWh</b></span>
-      </div>
+    <div class="welcome-time-card" aria-label="Session date and time">
+      <span class="welcome-time-label">Today</span>
+      <b id="welcomeTime">--:--:--</b>
+      <span id="welcomeDay">---</span>
+      <span id="welcomeDate">-- --- ----</span>
     </div>
   </div>
 </section>
@@ -165,7 +182,7 @@
       <div class="sb-user-row" id="sbUserRow">
         <div class="sb-avatar" id="sbAvatar">GU</div>
         <div class="sb-user-info">
-          <div class="sb-user-name" id="sbUserName">Guest</div>
+          <div class="sb-user-name" id="sbUserName">Signed out</div>
           <button class="sb-user-action" id="sbUserAction">Sign In</button>
         </div>
       </div>
@@ -178,12 +195,12 @@
   <div class="header">
     <div class="badge-row">
       <span class="badge">🌿 India · Multi-city</span>
-      <span class="aqi-badge" id="aqiBadge">🌫️ AQI checking…</span>
-      <span class="aqi-badge" id="tempBadge">🌡️ fetching temp…</span>
+      <span class="aqi-badge" id="aqiBadge" hidden aria-hidden="true">AQI checking...</span>
+      <span class="aqi-badge" id="tempBadge" hidden aria-hidden="true">Fetching temp...</span>
     </div>
-    <h1>Carbon Emissions Calculator</h1>
-    <p class="slogan">Taint the Great Job Carefully!</p>
-    <p class="header-sub">Scientific methodology from CEA, ICCT, IPCC &amp; MoRTH. Live fuel prices · OSM routing · Real-time AQI &amp; weather.</p>
+    <h1 hidden>Carbon Emissions Calculator</h1>
+    <p class="slogan" hidden>Taint the Great Job Carefully!</p>
+    <p class="header-sub" hidden>Scientific methodology from CEA, ICCT, IPCC &amp; MoRTH. Live fuel prices · OSM routing · Real-time AQI &amp; weather.</p>
   </div>
 
   <!-- ── GLOBAL STATS ── -->
@@ -268,10 +285,18 @@
       <button class="swap-btn" id="swapBtn" title="Swap locations">⇅ Swap</button>
       <button class="live-track-btn" id="ltToggleBtn">🚦 Track Live Journey</button>
       <span class="route-map-hint" id="routeMapHint">🖱️ Or click the map to pin From / To</span>
+      <div class="route-view-tabs" role="tablist" aria-label="Route workspace">
+        <button class="route-view-tab active" id="routeMapTab" type="button" role="tab" aria-selected="true" data-route-view="map">Map</button>
+        <button class="route-view-tab" id="routeLiveTab" type="button" role="tab" aria-selected="false" data-route-view="live">Live journey</button>
+      </div>
     </div>
 
-    <!-- Live Journey Tracker (expands below swap row) -->
-    <div class="lt-card" id="ltCard">
+    <!-- Live Journey Tracker (switches with route map) -->
+    <div class="lt-card route-view-panel" id="ltCard" data-route-view-panel="live" hidden>
+      <div class="route-floating-toggle" role="tablist" aria-label="Map and tracking view">
+        <button class="route-view-tab" type="button" role="tab" aria-selected="false" data-route-view="map">Map</button>
+        <button class="route-view-tab active" type="button" role="tab" aria-selected="true" data-route-view="live">Tracking</button>
+      </div>
       <!-- Status bar -->
       <div class="lt-status-bar">
         <span class="lt-status-dot" id="ltDot"></span>
@@ -332,7 +357,11 @@
     </div>
 
     <!-- Route map -->
-    <div id="routeMapWrap">
+    <div id="routeMapWrap" class="route-view-panel active" data-route-view-panel="map">
+      <div class="route-floating-toggle" role="tablist" aria-label="Map and tracking view">
+        <button class="route-view-tab active" type="button" role="tab" aria-selected="true" data-route-view="map">Map</button>
+        <button class="route-view-tab" type="button" role="tab" aria-selected="false" data-route-view="live">Tracking</button>
+      </div>
       <div id="routeMap"></div>
     </div>
 
@@ -436,6 +465,7 @@
   <div class="calc-actions">
     <button class="wp-calc-btn compact-calc" id="commuteCalcBtn">Save Commute Result</button>
     <button class="reset-action-btn" id="commuteResetBtn" type="button">Reset</button>
+    <button class="reset-action-btn" id="commutePdfBtn" type="button">Export PDF</button>
   </div>
 
   <div class="card">
@@ -659,8 +689,8 @@
     <div class="admin-env-row">
       <span>Environment</span>
       <b id="adminEnvName">dev</b>
-      <span id="adminEnvProject">Supabase dev project</span>
-      <span id="adminEnvSite">GitHub Pages dev site</span>
+      <span id="adminEnvProject">Data project</span>
+      <span id="adminEnvSite">Site endpoint</span>
     </div>
     <div class="layer-grid">
       <div class="layer-tile presentation">
@@ -673,11 +703,11 @@
       </div>
       <div class="layer-tile persistence">
         <b>Persistence</b>
-        <span>First-party guest cookie, localStorage fallback, Supabase Auth, and queued writes.</span>
+        <span>First-party cookies, browser storage fallback, cloud authentication, and queued writes.</span>
       </div>
       <div class="layer-tile data">
         <b>Data</b>
-        <span>Supabase tables, RPCs, JSON artifacts, media buckets, process logs, and scientific references.</span>
+        <span>Private tables, RPCs, JSON artifacts, media buckets, process logs, and scientific references.</span>
       </div>
     </div>
   </div>
@@ -906,7 +936,7 @@
 
   <!-- WP7: Team Commute -->
   <div class="card">
-    <div class="card-title">🚌 Team Commute <span class="wp-per">(aggregate)</span></div>
+    <div class="card-title team-commute-title">🚌 Team Commute <span class="wp-per">(aggregate)</span></div>
     <div class="fg-grid">
       <div class="fg"><label>Employees commuting to office daily</label>
         <input type="number" id="wpCommuters" min="0" value="40" placeholder="40"/></div>
@@ -939,7 +969,7 @@
   <!-- WP Results -->
   <div class="card" id="wpResultCard" style="display:none">
     <div class="card-title">📊 Workplace Carbon Footprint
-      <button class="wp-export-btn" id="wpExportBtn">📥 Export Report</button>
+      <button class="wp-export-btn" id="wpExportBtn">📥 Export PDF</button>
     </div>
 
     <!-- Headline number -->
@@ -1264,7 +1294,7 @@
   <!-- HM Results -->
   <div class="card" id="hmResultCard" style="display:none">
     <div class="card-title">📊 Home Carbon Footprint
-      <button class="wp-export-btn" id="hmExportBtn">📥 Export Report</button>
+      <button class="wp-export-btn" id="hmExportBtn">📥 Export PDF</button>
     </div>
 
     <!-- Hero -->
@@ -1541,7 +1571,7 @@
     </div>
 
     <!-- Export whole profile -->
-    <button class="wp-calc-btn" id="mtExportBtn" style="margin-top:4px">📥 Export My Full Carbon Profile</button>
+    <button class="wp-calc-btn" id="mtExportBtn" style="margin-top:4px">📥 Export My PDF</button>
   </div>
 
   <!-- Wizard navigation -->
@@ -1580,7 +1610,7 @@
   <!-- AI Recommendations strip -->
   <div class="card tb-ai-card" id="tbAiCard">
     <div class="card-title">Recommended for You
-      <span class="tb-ai-badge">AI-powered</span>
+      <span class="tb-ai-badge">Calculation-based</span>
     </div>
     <div class="tb-ai-body" id="tbAiBody">
       <div class="tb-ai-hint">Complete <strong>My Taint</strong> first to get personalised picks based on your biggest carbon sources.</div>
@@ -1635,7 +1665,7 @@
         <b>Affiliate links</b>
         <span>Clicking "Buy on Amazon" or "Buy on Flipkart" adds our affiliate tag to the URL. You pay the same price — the retailer shares a small commission with us (2–12%).</span>
       </div>
-      <div class="tb-how-item">
+      <div class="tb-how-item" hidden>
         <span class="tb-how-icon">Brand</span>
         <b>Brand partnerships</b>
         <span>Some brands (EVs, solar) offer referral bonuses for qualified leads. We disclose these on each card. No sponsored placement — ranking is always by CO₂ saved.</span>
@@ -1650,6 +1680,9 @@
 
 
   <!-- ── TAINT CONTACT ── -->
+
+  </div><!-- /buySection -->
+
   <div class="card tc-card">
     <div class="card-title">📬 Contact</div>
     <div class="tc-grid">
@@ -1728,7 +1761,7 @@
           <div class="cs-title">Feedback from this device</div>
           <div id="fbList"><div class="fb-empty">No feedback yet.</div></div>
         </div>
-        <div class="fb-setup-hint">
+        <div class="fb-setup-hint" hidden>
           <b>📬 Setup:</b> Check <code style="font-size:11px;background:var(--s2);padding:1px 5px;border-radius:4px">taint.calculator@gmail.com</code> for a FormSubmit activation link on first use.
           <button class="fb-test-btn" id="fbTestBtn" style="margin-top:6px">🧪 Send Test Email</button>
           <span class="fb-test-result" id="fbTestResult"></span>
@@ -1736,14 +1769,6 @@
       </div>
 
     </div><!-- /tc-grid -->
-
-    <div class="cookie-panel" id="cookiePanel">
-      <div>
-        <b>Cookie use</b>
-        <span>This app stores only the first-party <code>taint_skip_auth</code> preference cookie for guest mode. GitHub Pages hosts the static app; it does not read GitHub account cookies or add tracking cookies.</span>
-      </div>
-      <button class="cookie-clear-btn" id="cookieClearBtn" type="button">Clear Cookie</button>
-    </div>
 
     <!-- Contact + data sources strip -->
     <div class="tc-footer">
@@ -1765,7 +1790,6 @@
   </div>
 
 
-  </div><!-- /buySection -->
 
   <!-- siteCarbonCard removed — now in Taint Contact within Taint Buy -->
   <div id="siteCarbonCard" style="display:none" aria-hidden="true"></div>
@@ -1798,15 +1822,16 @@
      Leave as-is to run in local-only mode (no global stats).
      ═══════════════════════════════════════════════ -->
 <script src="./supabase-config.js?v=20260601-prod-branding"></script>
-<script src="./assets/js/supabase-runtime-config.js?v=20260601-prod-branding" defer></script>
+<script src="./assets/js/supabase-runtime-config.js?v=20260605-db-report-ui" defer></script>
 
 <!-- ═══════════════════════════════════════════════
      MAIN APPLICATION SCRIPT
      ═══════════════════════════════════════════════ -->
-<script src="./assets/js/app.js?v=20260601-prod-branding" defer></script>
+<script src="./assets/js/app.js?v=20260605-db-report-ui" defer></script>
 <!-- ── AUTH OVERLAY ── -->
 <div class="auth-overlay hidden" id="authOverlay">
   <div class="auth-card" id="authCard">
+    <button class="auth-close-btn" id="authCloseBtn" type="button" aria-label="Close sign in">×</button>
     <div class="auth-brand">Carbon Calculator</div>
     <div class="auth-tagline">Track · Reduce · Act · <span style="color:var(--hi)">Carbon Calculator for India</span></div>
 
@@ -1826,11 +1851,21 @@
       </div>
       <div class="auth-field" id="authPasswordField">
         <label id="authPasswordLabel">Password</label>
-        <input type="password" id="authPassword" class="auth-input" placeholder="Minimum 8 characters" autocomplete="current-password" maxlength="72"/>
+        <div class="password-wrap">
+          <input type="password" id="authPassword" class="auth-input" placeholder="Minimum 8 characters" autocomplete="current-password" maxlength="72"/>
+          <button class="password-toggle" id="authPasswordToggle" type="button" aria-label="Show password" aria-pressed="false">
+            <span aria-hidden="true">👁</span>
+          </button>
+        </div>
       </div>
       <div class="auth-field" id="authConfirmPasswordField" style="display:none">
         <label>Confirm new password</label>
-        <input type="password" id="authConfirmPassword" class="auth-input" placeholder="Re-enter new password" autocomplete="new-password" maxlength="72"/>
+        <div class="password-wrap">
+          <input type="password" id="authConfirmPassword" class="auth-input" placeholder="Re-enter new password" autocomplete="new-password" maxlength="72"/>
+          <button class="password-toggle" id="authConfirmPasswordToggle" type="button" aria-label="Show password" aria-pressed="false">
+            <span aria-hidden="true">👁</span>
+          </button>
+        </div>
       </div>
       <div class="auth-error" id="authError" role="alert" aria-live="assertive" hidden></div>
       <div class="auth-success" id="authSuccess" role="status" aria-live="polite" hidden></div>
@@ -1847,24 +1882,42 @@
       <svg width="18" height="18" viewBox="0 0 18 18" style="margin-right:8px"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.25-.164-1.84H9v3.48h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.614z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
       Continue with Google
     </button>
-    <button class="auth-google-btn" id="authGithub">Continue with GitHub</button>
+    <button class="auth-google-btn" id="authGithub">Continue with connected account</button>
     <div class="auth-provider-note" id="authProviderNote" hidden></div>
     <div class="auth-sso-row">
       <input type="text" id="authSsoDomain" class="auth-input" placeholder="company.com for SSO" autocomplete="organization"/>
       <button class="auth-sso-btn" id="authSsoBtn">SSO</button>
     </div>
 
-    <button class="auth-skip" id="authSkip">Continue as guest  →</button>
-
     <p class="auth-note">Your calculations run entirely in your browser. Sign in to sync your profile across devices. Confirmation and reset links are sent by email; passwords are never emailed.</p>
   </div>
 </div>
-<div class="cookie-consent hidden" id="cookieConsent" role="dialog" aria-live="polite" aria-label="Cookie notice">
-  <div>
-    <b>Cookie use</b>
-    <span>This app uses one first-party preference cookie for guest mode and this acknowledgement. No ads, no tracking, and no GitHub account cookies are read.</span>
+<div class="pdf-viewer hidden" id="pdfViewer" role="dialog" aria-modal="true" aria-label="PDF report viewer">
+  <div class="pdf-viewer-card">
+    <div class="pdf-viewer-head">
+      <img src="./assets/logo1.png" alt="TAINT" class="pdf-viewer-logo">
+      <div>
+        <b id="pdfViewerTitle">TAINT PDF report</b>
+        <span>Calculation report preview</span>
+      </div>
+      <button class="pdf-viewer-download" id="pdfViewerDownload" type="button">Download PDF</button>
+      <button class="pdf-viewer-close" id="pdfViewerClose" type="button" aria-label="Close PDF viewer">x</button>
+    </div>
+    <iframe id="pdfViewerFrame" title="TAINT calculation PDF preview"></iframe>
   </div>
-  <button type="button" id="cookieAcceptBtn">Accept</button>
+</div>
+
+<div class="cookie-consent hidden" id="cookieConsent" role="dialog" aria-live="polite" aria-label="Cookie notice">
+  <span class="cookie-consent-icon" aria-hidden="true">Cookie</span>
+  <div class="cookie-consent-copy">
+    <span>We use browser storage to save your calculations, preferences and profile. No third-party ad trackers.</span>
+  </div>
+  <div class="cookie-consent-actions">
+    <button type="button" id="cookieNecessaryBtn" class="cookie-secondary-btn">Necessary only</button>
+    <button type="button" id="cookieCustomizeBtn" class="cookie-secondary-btn">Customize</button>
+    <button type="button" id="cookieAcceptBtn" class="cookie-primary-btn">Accept All</button>
+    <a href="#accountPreferences" class="cookie-policy-link">Cookie Policy</a>
+  </div>
 </div>
 <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>
 
