@@ -30,8 +30,17 @@ jobs:
       - name: JavaScript syntax check
         run: |
           node --check assets/js/app.js
+          node --check assets/js/factor-registry.js
           node --check assets/js/supabase-runtime-config.js
           node --check scripts/write-supabase-config.mjs
+          node --check scripts/check-dev-db.mjs
+          node --check scripts/validate-factor-registry.mjs
+          node --check scripts/validate-security-posture.mjs
+
+      - name: Security and methodology validation
+        run: |
+          node scripts/validate-factor-registry.mjs
+          node scripts/validate-security-posture.mjs
 
       - name: Prepare dev static bundle
         shell: bash

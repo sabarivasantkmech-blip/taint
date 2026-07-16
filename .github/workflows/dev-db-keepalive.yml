@@ -1,0 +1,36 @@
+name: Dev DB Keepalive
+
+on:
+  schedule:
+    # Daily read-only ping to keep the dev Supabase project active.
+    - cron: '15 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-db-keepalive
+  cancel-in-progress: false
+
+jobs:
+  check-dev-db:
+    name: Check dev Supabase DB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax check
+        run: node --check scripts/check-dev-db.mjs
+
+      - name: Read-only dev DB ping
+        env:
+          TAINT_DEV_SUPABASE_URL: ${{ vars.TAINT_DEV_SUPABASE_URL }}
+          TAINT_DEV_SUPABASE_KEY: ${{ vars.TAINT_DEV_SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/check-dev-db.mjs

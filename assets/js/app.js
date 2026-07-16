@@ -35,9 +35,62 @@ let starRating = 0;
 let lastVeh = null, lastFuel = null;
 
 const REQUEST_TIMEOUT_MS = 12000;
-const WRITE_QUEUE_LIMIT = 4;
+const WRITE_QUEUE_LIMIT = 6;
+const LIVE_DATA_TTL_MS = 10 * 60 * 1000;
+const APP_SESSION_ID = (() => {
+  try { return crypto.randomUUID?.() || `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+  catch { return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+})();
+const APP_CHANNEL_NAME = 'taint_runtime_v1';
 const appWriteQueue = [];
 let activeWrites = 0;
+const WRITE_FAILED = Symbol('write_failed');
+const appRuntimeState = {
+  completedWrites: 0,
+  failedWrites: 0,
+  lastEventAt: null
+};
+let appBroadcast = null;
+
+function scheduleIdleTask(fn, timeout=1500) {
+  if (typeof requestIdleCallback === 'function') {
+    return requestIdleCallback(fn, { timeout });
+  }
+  return setTimeout(fn, Math.min(timeout, 300));
+}
+
+try {
+  appBroadcast = typeof BroadcastChannel === 'function' ? new BroadcastChannel(APP_CHANNEL_NAME) : null;
+} catch {}
+
+function publishAppEvent(type, payload={}) {
+  const event = {
+    type,
+    payload,
+    sessionId: APP_SESSION_ID,
+    at: new Date().toISOString()
+  };
+  appRuntimeState.lastEventAt = event.at;
+  try { appBroadcast?.postMessage(event); } catch {}
+  try { localStorage.setItem(`${APP_CHANNEL_NAME}:last`, JSON.stringify(event)); } catch {}
+}
+
+function handleAppEvent(event={}) {
+  if (!event || event.sessionId === APP_SESSION_ID) return;
+  if (event.type === 'recent.changed') handleRecentExternalChange(event.payload || {});
+  if (event.type === 'recent.refresh') refreshRecentCalculations(event.payload?.mode);
+  if (event.type === 'auth.changed') refreshAllRecentCalculations();
+}
+
+if (appBroadcast) appBroadcast.onmessage = evt => handleAppEvent(evt.data);
+window.addEventListener('storage', evt => {
+  if (evt.key === `${APP_CHANNEL_NAME}:last`) {
+    try { handleAppEvent(JSON.parse(evt.newValue || '{}')); } catch {}
+    return;
+  }
+  const mode = modeForRecentStorageKey(evt.key);
+  if (mode) handleRecentExternalChange({ mode, source:'storage' });
+});
 
 function notify(message, type='warn', title='TAINT') {
   const region = document.getElementById('toastRegion');
@@ -206,7 +259,8 @@ async function appFetch(url, options={}, { timeout=REQUEST_TIMEOUT_MS, label='re
 
 function enqueueWrite(work) {
   return new Promise(resolve => {
-    appWriteQueue.push({ work, resolve });
+    appWriteQueue.push({ work, resolve, sessionId:APP_SESSION_ID, queuedAt:Date.now() });
+    updateConcurrencyUI();
     drainWriteQueue();
   });
 }
@@ -215,18 +269,34 @@ function drainWriteQueue() {
   while (activeWrites < WRITE_QUEUE_LIMIT && appWriteQueue.length) {
     const item = appWriteQueue.shift();
     activeWrites++;
+    updateConcurrencyUI();
     Promise.resolve()
       .then(item.work)
       .catch(e => {
         console.warn('TAINT queued write skipped:', e.message);
-        return null;
+        appRuntimeState.failedWrites++;
+        return WRITE_FAILED;
       })
-      .then(item.resolve)
+      .then(result => {
+        if (result !== WRITE_FAILED) appRuntimeState.completedWrites++;
+        item.resolve(result === WRITE_FAILED ? null : result);
+      })
       .finally(() => {
         activeWrites--;
+        updateConcurrencyUI();
         drainWriteQueue();
       });
   }
+}
+
+function updateConcurrencyUI() {
+  const pending = appWriteQueue.length;
+  const running = activeWrites;
+  const status = `${running}/${WRITE_QUEUE_LIMIT} running, ${pending} queued`;
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('adminConcurrency', status);
+  setText('adminSessionId', APP_SESSION_ID.slice(0, 8));
+  setText('adminWriteStats', `${appRuntimeState.completedWrites} done, ${appRuntimeState.failedWrites} skipped`);
 }
 
 // ──────────────────────────────────────────────────────
@@ -541,8 +611,14 @@ function applyTheme(light) {
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) themeBtn.textContent = light ? 'Dark' : 'Light';
   document.getElementById('themeMeta').content = light ? '#f4f6f8' : '#090b0d';
-  document.getElementById('prefThemeLight')?.classList.toggle('active', light);
-  document.getElementById('prefThemeDark')?.classList.toggle('active', !light);
+  const lightBtn = document.getElementById('prefThemeLight');
+  const darkBtn = document.getElementById('prefThemeDark');
+  lightBtn?.classList.toggle('active', light);
+  darkBtn?.classList.toggle('active', !light);
+  lightBtn?.setAttribute('aria-pressed', light ? 'true' : 'false');
+  darkBtn?.setAttribute('aria-pressed', !light ? 'true' : 'false');
+  const status = document.getElementById('prefThemeStatus');
+  if (status) status.textContent = light ? 'Light theme is active for this workspace.' : 'Dark theme is active for this workspace.';
   try { localStorage.setItem('taint_theme', light ? 'light' : 'dark'); } catch(e){}
 }
 
@@ -564,13 +640,37 @@ const AQI_LEVELS = [
   { max:Infinity, emoji:'⚫', label:'Hazardous',             cls:'aqi-hazardous'}
 ];
 function aqiLevel(v) { return AQI_LEVELS.find(l => v <= l.max) || AQI_LEVELS.at(-1); }
+const liveDataCache = { aqi:new Map(), weather:new Map() };
+
+function renderAQIValue(aqi, cityName=city().name) {
+  const lv = aqiLevel(aqi);
+  const chip = document.getElementById('aqiChip');
+  if (chip) {
+    chip.className = `aqi-chip ${lv.cls}`;
+    document.getElementById('aqiEmoji').textContent = lv.emoji;
+    document.getElementById('aqiVal').textContent = aqi;
+    document.getElementById('aqiLbl').textContent = lv.label;
+    chip.title = `${cityName} AQI ${aqi} / ${lv.label} / WAQI/CPCB`;
+  }
+  const badge = document.getElementById('aqiBadge');
+  if (badge) badge.textContent = `${lv.emoji} AQI ${aqi} / ${lv.label}`;
+}
 
 async function fetchAQI() {
+  const cacheKey = currentCityKey;
+  const cached = liveDataCache.aqi.get(cacheKey);
+  if (cached && Date.now() - cached.at < LIVE_DATA_TTL_MS) {
+    renderAQIValue(cached.aqi, cached.cityName);
+    return;
+  }
   try {
     const r = await fetch(`https://api.waqi.info/feed/${city().aqiSlug}/?token=${WAQI_TOKEN}`, { signal:AbortSignal.timeout(8000) });
     const d = await r.json();
     if (d.status !== 'ok') throw new Error('bad status');
     const aqi = d.data.aqi;
+    liveDataCache.aqi.set(cacheKey, { at:Date.now(), aqi, cityName:city().name });
+    renderAQIValue(aqi);
+    return;
     const lv  = aqiLevel(aqi);
     /* Update topbar chip */
     const chip = document.getElementById('aqiChip');
@@ -608,7 +708,27 @@ const WMO_CODES = {
   95:'⛈️ Thunderstorm', 96:'⛈️ Thunderstorm', 99:'⛈️ Thunderstorm'
 };
 
+function renderWeatherValue(data) {
+  const { temp, feels, humidity, desc, descShort, cityName } = data;
+  const heatCls = temp >= 38 ? 'hot' : temp >= 30 ? 'warm' : 'mild';
+  const chip = document.getElementById('tempChip');
+  if (chip) {
+    chip.className = `temp-chip ${heatCls}`;
+    chip.title = `${cityName} / ${temp}C (feels ${feels}C) / Humidity ${humidity}% / ${desc}`;
+    document.getElementById('tempVal').textContent = temp;
+    document.getElementById('tempDesc').textContent = descShort;
+  }
+  const badge = document.getElementById('tempBadge');
+  if (badge) badge.textContent = `Temp ${temp}C / ${desc} / Feels ${feels}C / ${humidity}% humidity`;
+}
+
 async function fetchWeather() {
+  const cacheKey = currentCityKey;
+  const cached = liveDataCache.weather.get(cacheKey);
+  if (cached && Date.now() - cached.at < LIVE_DATA_TTL_MS) {
+    renderWeatherValue(cached);
+    return;
+  }
   try {
     /* Open-Meteo free endpoint — no API key needed */
     const url = 'https://api.open-meteo.com/v1/forecast' +
@@ -627,6 +747,10 @@ async function fetchWeather() {
     const wmo      = cur.weather_code;
     const desc     = WMO_CODES[wmo] || '🌡️';
     const descShort = desc.split(' ').slice(1).join(' '); // drop emoji for chip
+    const payload = { at:Date.now(), temp, feels, humidity, desc, descShort, cityName:city().name };
+    liveDataCache.weather.set(cacheKey, payload);
+    renderWeatherValue(payload);
+    return;
 
     /* Classify heat level */
     const heatCls = temp >= 38 ? 'hot' : temp >= 30 ? 'warm' : 'mild';
@@ -907,9 +1031,6 @@ function setRouteWorkspaceView(view='map') {
   }
 }
 
-document.querySelectorAll('.route-view-tab').forEach(btn => {
-  btn.addEventListener('click', () => setRouteWorkspaceView(btn.dataset.routeView));
-});
 document.addEventListener('click', event => {
   const btn = event.target?.closest?.('.route-view-tab[data-route-view]');
   if (!btn) return;
@@ -1291,8 +1412,12 @@ document.getElementById('swapBtn').addEventListener('click',()=>{
   if(f.value&&t.value) fetchRoute();
 });
 
-/* Initialise route map immediately so it's ready when the page loads */
-document.addEventListener('DOMContentLoaded',()=>{ initRouteMap(); }, {once:true});
+/* Defer Leaflet setup until after first paint; direct route actions still initialise immediately. */
+document.addEventListener('DOMContentLoaded', () => {
+  scheduleIdleTask(() => {
+    if (!routeMapReady && document.getElementById('routeMapWrap')?.offsetParent !== null) initRouteMap();
+  }, 2500);
+}, { once:true });
 
 // ──────────────────────────────────────────────────────
 //  LOCAL STORAGE HELPERS — usage tracking
@@ -1885,7 +2010,7 @@ const RECENT_MODE_CONFIG = {
     table:'product_purchases',
     select:'id,created_at,product_id,product_name,platform,status,price_num,quantity,city_name,metadata',
     query:'status=in.(checked_out,bought)',
-    empty:'Open a vendor link or mark a product bought to build your list.'
+    empty:'Open a vendor link or mark a product fulfilled to build your list.'
   }
 };
 const RECENT_LIMIT = 5;
@@ -1903,10 +2028,50 @@ function readLocalRecent(mode) {
   catch { return []; }
 }
 
-function writeLocalRecent(mode, records) {
+function modeForRecentStorageKey(key) {
+  if (!key) return '';
+  return Object.entries(RECENT_MODE_CONFIG).find(([, cfg]) => cfg.localKey === key)?.[0] || '';
+}
+
+function recentSortTime(record) {
+  const value = Date.parse(record?.editedAt || record?.at || record?.payload?.created_at || '') || 0;
+  return value || Number(String(record?.id || '').replace(/\D/g, '').slice(0, 13)) || 0;
+}
+
+function mergeRecentRecords(...groups) {
+  const byId = new Map();
+  groups.flat().filter(Boolean).forEach(item => {
+    const key = String(item.id || `${item.mode || 'recent'}-${recentSortTime(item)}`);
+    const prev = byId.get(key);
+    if (!prev || recentSortTime(item) >= recentSortTime(prev)) byId.set(key, item);
+  });
+  return [...byId.values()]
+    .sort((a, b) => recentSortTime(b) - recentSortTime(a))
+    .slice(0, RECENT_LIMIT);
+}
+
+function writeLocalRecent(mode, records, { broadcast=true }={}) {
   const cfg = RECENT_MODE_CONFIG[mode];
   if (!cfg) return;
-  try { localStorage.setItem(cfg.localKey, JSON.stringify(records.slice(0, RECENT_LIMIT))); } catch {}
+  const next = mergeRecentRecords(records);
+  try { localStorage.setItem(cfg.localKey, JSON.stringify(next)); } catch {}
+  if (broadcast) publishAppEvent('recent.changed', { mode, scope:'local' });
+}
+
+function updateLocalRecent(mode, updater, { broadcast=true }={}) {
+  const current = readLocalRecent(mode);
+  const next = mergeRecentRecords(updater(current));
+  writeLocalRecent(mode, next, { broadcast });
+  return next;
+}
+
+function handleRecentExternalChange({ mode }={}) {
+  if (!mode || !RECENT_MODE_CONFIG[mode]) return;
+  if (isCloudRecentUser()) {
+    refreshRecentCalculations(mode);
+    return;
+  }
+  if (mode === currentMode) renderRecentCalculations(mode);
 }
 
 function pdfSafeText(value) {
@@ -2279,7 +2444,11 @@ function recentSourcePayload(mode, row) {
     grade       : row.grade || null,
     source_table: sourceTable,
     source_row_id: sourceRowId,
-    payload     : payload
+    payload     : {
+      ...payload,
+      appSessionId: payload.appSessionId || APP_SESSION_ID,
+      savedFromMode: mode
+    }
   };
 }
 
@@ -2301,58 +2470,74 @@ async function sbFetchRecentItems(mode, limit=RECENT_LIMIT) {
 
 async function sbSaveRecentItem(mode, row) {
   if (!isCloudRecentUser()) return null;
-  const existing = await sbFetchRecentItems(mode, RECENT_LIMIT + 1).catch(() => null);
-  const alreadySaved = existing?.some(item => String(item.id) === String(row.id));
-  if (!alreadySaved && existing && existing.length >= RECENT_LIMIT) {
-    notify(`Latest ${RECENT_LIMIT} saved calculations are full. Delete an older calculation before saving another.`, 'warn', 'Recent calculations');
-    return null;
-  }
-  const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}`, {
-    method:'POST',
-    headers:{ ...(await SB_AUTH_HEADERS()), 'Prefer':'return=representation' },
-    body:JSON.stringify(recentSourcePayload(mode, row))
-  }, { label:`${mode} saved item insert`, timeout:9000, retries:1 });
-  const data = await res.json().catch(() => []);
-  const saved = Array.isArray(data) ? data[0] : data;
-  return saved ? dbRowToRecent(saved) : null;
+  return enqueueWrite(async () => {
+    const existing = await sbFetchRecentItems(mode, RECENT_LIMIT + 1).catch(() => null);
+    const alreadySaved = existing?.some(item => String(item.id) === String(row.id));
+    if (!alreadySaved && existing && existing.length >= RECENT_LIMIT) {
+      notify(`Latest ${RECENT_LIMIT} saved calculations are full. Delete an older calculation before saving another.`, 'warn', 'Recent calculations');
+      return null;
+    }
+    const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}`, {
+      method:'POST',
+      headers:{ ...(await SB_AUTH_HEADERS()), 'Prefer':'return=representation' },
+      body:JSON.stringify(recentSourcePayload(mode, row))
+    }, { label:`${mode} saved item insert`, timeout:9000, retries:1 });
+    const data = await res.json().catch(() => []);
+    const saved = Array.isArray(data) ? data[0] : data;
+    return saved ? dbRowToRecent(saved) : null;
+  });
 }
 
 async function sbPatchRecentItem(mode, id, patch) {
   if (!isCloudRecentUser()) return null;
   const safeId = uuidOrNull(id);
   if (!safeId) return null;
-  const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?id=eq.${encodeURIComponent(safeId)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
-    method:'PATCH',
-    headers:{ ...(await SB_AUTH_HEADERS()), 'Prefer':'return=representation' },
-    body:JSON.stringify(patch)
-  }, { label:`${mode} saved item update`, timeout:9000, retries:1 });
-  const data = await res.json().catch(() => []);
-  const saved = Array.isArray(data) ? data[0] : data;
-  return saved ? dbRowToRecent(saved) : null;
+  return enqueueWrite(async () => {
+    const res = await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?id=eq.${encodeURIComponent(safeId)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
+      method:'PATCH',
+      headers:{ ...(await SB_AUTH_HEADERS()), 'Prefer':'return=representation' },
+      body:JSON.stringify(patch)
+    }, { label:`${mode} saved item update`, timeout:9000, retries:1 });
+    const data = await res.json().catch(() => []);
+    const saved = Array.isArray(data) ? data[0] : data;
+    return saved ? dbRowToRecent(saved) : null;
+  });
 }
 
 async function sbDeleteRecentItem(mode, id) {
   if (!isCloudRecentUser()) return false;
   const safeId = uuidOrNull(id);
   if (!safeId) return false;
-  await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?id=eq.${encodeURIComponent(safeId)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
-    method:'DELETE',
-    headers: await SB_AUTH_HEADERS()
-  }, { label:`${mode} saved item delete`, timeout:9000, retries:1 });
-  return true;
+  return enqueueWrite(async () => {
+    await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?id=eq.${encodeURIComponent(safeId)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
+      method:'DELETE',
+      headers: await SB_AUTH_HEADERS()
+    }, { label:`${mode} saved item delete`, timeout:9000, retries:1 });
+    return true;
+  });
 }
 
 async function sbClearRecentItems(mode) {
   if (!isCloudRecentUser()) return false;
-  await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?mode=eq.${encodeURIComponent(mode)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
-    method:'DELETE',
-    headers: await SB_AUTH_HEADERS()
-  }, { label:`${mode} saved items clear`, timeout:9000, retries:1 });
-  return true;
+  return enqueueWrite(async () => {
+    await appFetch(`${SUPABASE_CONFIG.url}/rest/v1/${RECENT_DB_TABLE}?mode=eq.${encodeURIComponent(mode)}&auth_user_id=eq.${encodeURIComponent(currentUser.id)}`, {
+      method:'DELETE',
+      headers: await SB_AUTH_HEADERS()
+    }, { label:`${mode} saved items clear`, timeout:9000, retries:1 });
+    return true;
+  });
 }
 
 function canSaveRecentRecord(mode, id=null) {
   if (!isSignedInUser()) return true;
+  if (!isCloudRecentUser() && currentCookiePreference() !== 'full') {
+    notify('Full storage is required to keep local history and fulfilment lists on this device.', 'warn', 'Preferences');
+    setAccountMenu(true);
+    setPreferencesPanel(true);
+    setPreferenceDrilldown('cookies');
+    if (!hasCookieAck()) openCookieBanner();
+    return false;
+  }
   const records = isCloudRecentUser() ? (recentUiCache[mode] || []) : readLocalRecent(mode);
   const alreadySaved = id !== null && records.some(item => String(item.id) === String(id));
   if (!alreadySaved && records.length >= RECENT_LIMIT) {
@@ -2369,19 +2554,19 @@ function saveRecentRecord(mode, record) {
     sbSaveRecentItem(mode, row)
       .then(saved => {
         if (!saved) return;
-        recentUiCache[mode] = [saved, ...(recentUiCache[mode] || []).filter(item => String(item.id) !== String(saved.id))].slice(0, RECENT_LIMIT);
+        recentUiCache[mode] = mergeRecentRecords([saved], recentUiCache[mode] || []);
         renderRecentCalculations(mode, recentUiCache[mode]);
+        publishAppEvent('recent.changed', { mode, scope:'cloud' });
       })
       .catch(error => {
         console.warn('TAINT DB saved item fallback:', error.message);
-        writeLocalRecent(mode, [row, ...readLocalRecent(mode).filter(item => item.id !== row.id)]);
+        updateLocalRecent(mode, records => [row, ...records.filter(item => item.id !== row.id)]);
         renderRecentCalculations(mode);
       });
     return row;
   }
-  const existing = readLocalRecent(mode).filter(item => item.id !== row.id);
   if (!canSaveRecentRecord(mode, row.id)) return null;
-  writeLocalRecent(mode, [row, ...existing]);
+  updateLocalRecent(mode, records => [row, ...records.filter(item => item.id !== row.id)]);
   renderRecentCalculations(mode);
   return row;
 }
@@ -2402,7 +2587,7 @@ function rowToRecent(mode, row) {
     });
   }
   if (mode === 'buy') {
-    const status = row.status === 'bought' ? 'Bought' : 'Checked out';
+    const status = row.status === 'bought' ? 'Fulfilled' : 'Opened vendor';
     return recentRecord(mode, {
       id: row.id || row.created_at,
       at: row.created_at,
@@ -2563,7 +2748,7 @@ function renderRecentCalculations(mode, incoming=null) {
 }
 
 async function exportRecentPdf(mode, id) {
-  const record = readLocalRecent(mode).find(item => String(item.id) === String(id));
+  const record = recentRecordById(mode, id);
   if (!record) {
     notify('Saved calculation was not found in this session. Refresh the recent list and try again.', 'warn', 'PDF export');
     return null;
@@ -2588,17 +2773,17 @@ async function deleteRecentRecord(mode, id) {
     if (!ok) throw new Error('Saved DB item was not found or cannot be deleted.');
     recentUiCache[mode] = (recentUiCache[mode] || []).filter(item => String(item.id) !== String(id));
     renderRecentCalculations(mode, recentUiCache[mode]);
+    publishAppEvent('recent.changed', { mode, scope:'cloud' });
     await refreshRecentCalculations(mode);
     notify('Saved calculation deleted from your account.', 'success', 'Recent calculations');
     return;
   }
   const records = readLocalRecent(mode);
-  const next = records.filter(item => String(item.id) !== String(id));
-  if (next.length === records.length) {
+  if (!records.some(item => String(item.id) === String(id))) {
     notify('Saved calculation was not found.', 'warn', 'Recent calculations');
     return;
   }
-  writeLocalRecent(mode, next);
+  updateLocalRecent(mode, items => items.filter(item => String(item.id) !== String(id)));
   renderRecentCalculations(mode);
   notify('Saved calculation deleted. You can save another calculation now.', 'success', 'Recent calculations');
 }
@@ -2624,6 +2809,7 @@ async function editRecentRecord(mode, id) {
     if (!saved) throw new Error('Saved DB item was not updated.');
     recentUiCache[mode] = (recentUiCache[mode] || []).map(item => String(item.id) === String(id) ? saved : item);
     renderRecentCalculations(mode, recentUiCache[mode]);
+    publishAppEvent('recent.changed', { mode, scope:'cloud' });
     notify('Saved calculation updated in your account.', 'success', 'Recent calculations');
     return;
   }
@@ -2631,13 +2817,9 @@ async function editRecentRecord(mode, id) {
     notify('Saved calculation was not found.', 'warn', 'Recent calculations');
     return;
   }
-  records[idx] = {
-    ...current,
-    title: patch.title,
-    detail: patch.detail || '',
-    editedAt: new Date().toISOString()
-  };
-  writeLocalRecent(mode, records);
+  updateLocalRecent(mode, items => items.map(item => String(item.id) === String(id)
+    ? { ...current, title: patch.title, detail: patch.detail || '', editedAt: new Date().toISOString() }
+    : item));
   renderRecentCalculations(mode);
   notify('Saved calculation updated.', 'success', 'Recent calculations');
 }
@@ -2658,8 +2840,9 @@ async function resaveRecentRecord(mode, id) {
       payload: record.payload || {}
     });
     if (!saved) throw new Error('Saved DB item was not refreshed.');
-    recentUiCache[mode] = [saved, ...(recentUiCache[mode] || []).filter(item => String(item.id) !== String(id))].slice(0, RECENT_LIMIT);
+    recentUiCache[mode] = mergeRecentRecords([saved], (recentUiCache[mode] || []).filter(item => String(item.id) !== String(id)));
     renderRecentCalculations(mode, recentUiCache[mode]);
+    publishAppEvent('recent.changed', { mode, scope:'cloud' });
     notify(`Calculation saved to your DB latest ${RECENT_LIMIT}.`, 'success', 'Recent calculations');
     return;
   }
@@ -2676,6 +2859,7 @@ async function clearRecentRecords(mode) {
     await sbClearRecentItems(mode);
     recentUiCache[mode] = [];
     renderRecentCalculations(mode, []);
+    publishAppEvent('recent.changed', { mode, scope:'cloud' });
     notify('Latest 5 list cleared from your account.', 'success', 'Recent calculations');
     return;
   }
@@ -2690,7 +2874,7 @@ async function refreshRecentCalculations(mode) {
     const remote = await fetchRecentRemote(mode);
     if (remote) {
       recentUiCache[mode] = remote.slice(0, RECENT_LIMIT);
-      if (!isCloudRecentUser()) writeLocalRecent(mode, remote);
+      if (!isCloudRecentUser()) writeLocalRecent(mode, remote, { broadcast:false });
       renderRecentCalculations(mode, remote);
     }
   } catch (e) {
@@ -2699,7 +2883,12 @@ async function refreshRecentCalculations(mode) {
 }
 
 function refreshAllRecentCalculations() {
-  Object.keys(RECENT_MODE_CONFIG).forEach(mode => refreshRecentCalculations(mode));
+  const modes = Object.keys(RECENT_MODE_CONFIG);
+  const first = RECENT_MODE_CONFIG[currentMode] ? currentMode : modes[0];
+  if (first) refreshRecentCalculations(first);
+  modes
+    .filter(mode => mode !== first)
+    .forEach((mode, index) => scheduleIdleTask(() => refreshRecentCalculations(mode), 1000 + index * 250));
 }
 
 document.addEventListener('click', async event => {
@@ -3870,8 +4059,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 const SC = {
   // India CEA 2023 grid intensity: 716 g CO₂/kWh
   GRID_G_PER_KWH : 716,
-  // SWD model: 1.805 kWh per GB transferred
-  KWH_PER_GB     : 1.805,
+  // SWD v4 model: operational + embodied energy intensities total 0.300 kWh/GB.
+  KWH_PER_GB     : 0.300,
   // Derived: g CO₂ per byte
   get G_PER_BYTE(){ return this.KWH_PER_GB * this.GRID_G_PER_KWH / (1024 ** 3); },
 
@@ -4663,6 +4852,7 @@ function updateRuntimeUI() {
   setText('adminEnvName', envName);
   setText('adminEnvProject', prod ? `${envLabel} data project` : `${envLabel} Supabase`);
   setText('adminEnvSite', prod ? (authRedirectTo() ? 'Production site configured' : 'Production redirect missing') : (authRedirectTo() || 'No redirect URL configured'));
+  updateConcurrencyUI();
 }
 
 function applyProductionCopy() {
@@ -4671,7 +4861,7 @@ function applyProductionCopy() {
     const el = document.querySelector(selector);
     if (el) el.textContent = value;
   };
-  setText('.layer-tile.persistence span', 'First-party cookies, browser storage fallback, cloud authentication, and queued writes.');
+  setText('.layer-tile.persistence span', 'First-party cookies, browser storage fallback, cloud authentication, cross-tab sync, and parallel queued writes.');
   setText('.layer-tile.data span', 'Private tables, RPCs, JSON artifacts, media buckets, process logs, and scientific references.');
   const providerNote = document.getElementById('authProviderNote');
   if (providerNote) { providerNote.textContent = ''; providerNote.hidden = true; }
@@ -4777,6 +4967,7 @@ const LOCAL_USERS_KEY   = 'taint_users_v1';
 const LOCAL_SESSION_KEY = 'taint_session_v1';
 const AUTH_SKIP_COOKIE  = 'taint_skip_auth';
 const COOKIE_ACK_COOKIE = 'taint_cookie_ack';
+const COOKIE_STORAGE_PREF_KEY = 'taint_cookie_storage_pref';
 
 function cookieSecureSuffix() {
   return location.protocol === 'https:' ? '; Secure' : '';
@@ -4830,10 +5021,45 @@ function setCookieAck(value=true) {
     }
   } catch {}
 }
+function setCookiePreference(mode) {
+  const normalized = mode === 'full' ? 'full' : 'necessary';
+  try { localStorage.setItem(COOKIE_STORAGE_PREF_KEY, normalized); } catch {}
+  syncCookiePreferenceControls(normalized);
+  return normalized;
+}
+function currentCookiePreference() {
+  try { return localStorage.getItem(COOKIE_STORAGE_PREF_KEY) || ''; }
+  catch { return ''; }
+}
+function cookiePreferenceStatus(mode=currentCookiePreference()) {
+  if (mode === 'full') return 'Full storage is active: preferences, saved calculations and fulfilment lists can be kept locally.';
+  if (mode === 'necessary') return 'Necessary storage is active: optional local history and fulfilment lists are paused.';
+  return 'No storage choice recorded. Select Necessary or Full storage.';
+}
+function syncCookiePreferenceControls(mode=currentCookiePreference()) {
+  const necessary = mode === 'necessary';
+  const full = mode === 'full';
+  const necessaryBtn = document.getElementById('prefCookieNecessaryBtn');
+  const fullBtn = document.getElementById('prefCookieAcceptBtn');
+  necessaryBtn?.classList.toggle('active', necessary);
+  fullBtn?.classList.toggle('active', full);
+  necessaryBtn?.setAttribute('aria-pressed', necessary ? 'true' : 'false');
+  fullBtn?.setAttribute('aria-pressed', full ? 'true' : 'false');
+  const status = document.getElementById('prefCookieStatus');
+  if (status) status.textContent = cookiePreferenceStatus(mode);
+}
+function openCookieBanner() {
+  const banner = document.getElementById('cookieConsent');
+  if (!banner) return;
+  banner.classList.remove('hidden');
+  const firstAction = document.getElementById('cookieNecessaryBtn') || document.getElementById('cookieAcceptBtn');
+  try { firstAction?.focus({ preventScroll:true }); } catch {}
+}
 function syncCookieConsent() {
   const banner = document.getElementById('cookieConsent');
   if (!banner) return;
   banner.classList.toggle('hidden', hasCookieAck());
+  syncCookiePreferenceControls();
 }
 function userInitials(user) {
   if (!user) return 'SI';
@@ -5073,6 +5299,7 @@ async function authSignOut() {
   localSignOut();
   rememberAuthSkip(false);
   currentUser=null;
+  publishAppEvent('auth.changed', { signedIn:false });
   updateAuthUI(null);
   showAuthOverlay('signin');
   notify('Signed out.', 'success', 'Account');
@@ -5386,6 +5613,7 @@ document.addEventListener('click', async e => {
     if (authMode === 'signin') clearAuthFailures(checked.email);
     rememberAuthSkip(false);
     await sbUpsertProfile(currentUser);
+    publishAppEvent('auth.changed', { signedIn:true, provider:currentUser?.provider || 'local' });
     updateAuthUI(currentUser); hideAuthOverlay();
     notify(authMode==='signup' ? 'Account ready. Password was stored securely, not emailed.' : 'Signed in successfully.', 'success', 'Account');
   } catch(err){
@@ -5439,36 +5667,61 @@ document.addEventListener('click', e => {
   if (e.target?.id !== 'cookieClearBtn') return;
   rememberAuthSkip(false);
   setCookieAck(false);
-  syncCookieConsent();
-  notify('TAINT preference cookies cleared.', 'success', 'Cookies');
+  try { localStorage.removeItem(COOKIE_STORAGE_PREF_KEY); } catch {}
+  openCookieBanner();
+  syncCookiePreferenceControls();
+  notify('Cookie choice reset. Use the bottom banner to choose necessary or full storage.', 'success', 'Cookies');
 });
+
+function setPreferenceDrilldown(section='cookies') {
+  const target = section === 'theme' ? 'theme' : 'cookies';
+  document.querySelectorAll('[data-pref-section]').forEach(panel => {
+    panel.hidden = panel.dataset.prefSection !== target;
+  });
+  document.querySelectorAll('[data-pref-panel]').forEach(btn => {
+    const active = btn.dataset.prefPanel === target;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  const breadcrumb = document.getElementById('accountPrefBreadcrumb');
+  if (breadcrumb) breadcrumb.textContent = `Settings > Preferences > ${target === 'theme' ? 'Theme' : 'Cookies'}`;
+}
 
 function setPreferencesPanel(open=true) {
   const panel = document.getElementById('accountPreferences');
   const btn = document.getElementById('accountPrefsBtn');
   if (panel) panel.hidden = !open;
   if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setPreferenceDrilldown('cookies');
+    syncCookiePreferenceControls();
+  }
 }
 
 function clearBrowserPreferences() {
   rememberAuthSkip(false);
   setCookieAck(false);
-  syncCookieConsent();
-  notify('Browser storage preference reset. The cookie notice will show again when needed.', 'success', 'Preferences');
+  try { localStorage.removeItem(COOKIE_STORAGE_PREF_KEY); } catch {}
+  openCookieBanner();
+  syncCookiePreferenceControls();
+  notify('Cookie choice reset. The bottom banner is open for a fresh selection.', 'success', 'Preferences');
 }
 
 document.addEventListener('click', e => {
   if (!['cookieAcceptBtn', 'cookieNecessaryBtn'].includes(e.target?.id)) return;
+  const full = e.target.id === 'cookieAcceptBtn';
+  setCookiePreference(full ? 'full' : 'necessary');
   setCookieAck(true);
   syncCookieConsent();
-  notify(e.target.id === 'cookieAcceptBtn' ? 'All first-party storage preferences saved.' : 'Necessary browser storage preference saved.', 'success', 'Cookies');
+  notify(full ? 'Full first-party storage enabled for preferences, history and fulfilment lists.' : 'Necessary first-party storage only.', 'success', 'Cookies');
 });
 
 document.addEventListener('click', e => {
   if (e.target?.id !== 'cookieCustomizeBtn') return;
   setAccountMenu(true);
   setPreferencesPanel(true);
-  notify('Cookie preferences are available from Settings - Preferences in the account menu.', 'success', 'Cookie settings');
+  setPreferenceDrilldown('cookies');
+  notify('Cookie preferences are open under Settings > Preferences > Cookies.', 'success', 'Cookie settings');
 });
 
 document.addEventListener('click', e => {
@@ -5477,7 +5730,8 @@ document.addEventListener('click', e => {
   e.preventDefault();
   setAccountMenu(true);
   setPreferencesPanel(true);
-  notify('Cookie controls are under Settings - Preferences.', 'success', 'Cookie settings');
+  setPreferenceDrilldown('cookies');
+  notify('Cookie controls are under Settings > Preferences > Cookies.', 'success', 'Cookie settings');
 });
 
 document.addEventListener('click', e => {
@@ -5502,10 +5756,17 @@ document.addEventListener('click', async e => {
     setPreferencesPanel(panel?.hidden !== false);
     return;
   }
+  const prefTab = e.target?.closest?.('[data-pref-panel]');
+  if (prefTab) {
+    setPreferenceDrilldown(prefTab.dataset.prefPanel);
+    return;
+  }
   if (e.target?.id === 'prefCookieNecessaryBtn' || e.target?.id === 'prefCookieAcceptBtn') {
+    const full = e.target.id === 'prefCookieAcceptBtn';
+    setCookiePreference(full ? 'full' : 'necessary');
     setCookieAck(true);
     syncCookieConsent();
-    notify(e.target.id === 'prefCookieAcceptBtn' ? 'All first-party storage preferences saved.' : 'Necessary browser storage preference saved.', 'success', 'Preferences');
+    notify(full ? 'Full first-party storage enabled.' : 'Necessary first-party storage only.', 'success', 'Preferences');
     return;
   }
   if (e.target?.id === 'prefCookieClearBtn') {
@@ -5538,6 +5799,7 @@ if(supabaseClient){
       }
       if (authRecoveryMode || authMode === 'reset') return;
       sbUpsertProfile(currentUser);
+      publishAppEvent('auth.changed', { signedIn:true, provider:currentUser?.provider || 'supabase' });
       updateAuthUI(currentUser); hideAuthOverlay();
       if (isConfirmationUrl()) {
         showAuthLinkNoticeOnce('Email confirmed. You are signed in.', 'Account confirmed');
@@ -5589,7 +5851,7 @@ async function initAuth(){
     }
     return;
   }
-  if(hasSession){ sbUpsertProfile(currentUser); updateAuthUI(currentUser); hideAuthOverlay(); }
+  if(hasSession){ sbUpsertProfile(currentUser); publishAppEvent('auth.changed', { signedIn:true, provider:currentUser?.provider || 'local' }); updateAuthUI(currentUser); hideAuthOverlay(); }
   else { updateAuthUI(null); setTimeout(showAuthOverlay,700); }
 }
 
@@ -5605,7 +5867,7 @@ const WP_EF = {
   // Energy
   gridKgPerKwh   : 0.716,   // India CEA 2023 (kg CO₂/kWh)
   dieselKgPerL   : 2.68,    // Diesel generator (kg CO₂/litre)
-  lpgKgPerKg     : 1.56,    // LPG combustion (kg CO₂/kg fuel)
+  lpgKgPerKg     : 2.983,   // LPG combustion (kg CO₂/kg fuel)
   // AC: COP ≈ 3.0; 1 ton cooling = 3.517 kW; runtime power = 3.517/3.0 = 1.17 kW/ton
   acKwPerTon     : 1.17,
   // Devices (W, active)
@@ -7262,7 +7524,7 @@ function tbScoreProductForProfile(product, profile) {
 
 function tbProductReason(product, profile) {
   const saving = product.saving || 'measurable CO2 savings';
-  if (!profile.hasProfile) return `Best general fit for ${profile.city}: high eco score and ${saving}.`;
+  if (!profile.hasProfile) return `Best general fulfilment fit for ${profile.city}: high eco score and ${saving}.`;
   if (profile.commuteT >= Math.max(profile.homeT, profile.workplaceT) && product.cat === 'transport') {
     return `Your commute is the strongest signal, so this targets transport emissions with ${saving}.`;
   }
@@ -7306,7 +7568,7 @@ function tbRenderCalculationPicks(profile) {
       </div>`;
     }).join('') + '</div>';
   if (!profile.hasProfile) {
-    body.innerHTML += '<div class="tb-ai-hint">Calculate a mode or save My Taint to make these picks more specific.</div>';
+    body.innerHTML += '<div class="tb-ai-hint">Calculate a mode or save My Taint to make this fulfilment ranking more specific.</div>';
   }
 }
 
@@ -7351,7 +7613,7 @@ function tbRenderGrid(products) {
       </div>
       <div class="tb-commission">${p.commission}</div>
       <div class="tb-buy-row">${buyBtns}</div>
-      <button class="tb-owned-btn" type="button" onclick="return tbRecordProductStatus('bought','${p.id}')">Mark Bought</button>
+      <button class="tb-owned-btn" type="button" onclick="return tbRecordProductStatus('bought','${p.id}')">Mark Fulfilled</button>
     </div>`;
   }).join('');
   document.getElementById('tbCount').textContent = `${products.length} product${products.length!==1?'s':''}`;
@@ -7369,7 +7631,7 @@ function tbStoreLocalStatus(record) {
     at: record.at || new Date().toISOString(),
     city: record.city || city().name,
     title: record.productName || record.product_id || 'Taint Buy product',
-    detail: `${record.status === 'bought' ? 'Bought' : 'Checked out'}${record.platform ? ` · ${record.platform}` : ''}`,
+    detail: `${record.status === 'bought' ? 'Fulfilled' : 'Opened vendor'}${record.platform ? ` · ${record.platform}` : ''}`,
     value: Number(record.priceNum || 0),
     unit:'INR',
     payload: record
@@ -7404,7 +7666,7 @@ function tbRecordProductStatus(status, productId, platform='manual') {
     city_name   : city().name,
     metadata    : { eco:product.eco, saving:product.saving, tags:product.tags, source:'taint_buy' }
   }, 'functional');
-  if (normalizedStatus === 'bought') notify(`${product.name} added to your bought list.`, 'success', 'Taint Buy');
+  if (normalizedStatus === 'bought') notify(`${product.name} added to your fulfilment list.`, 'success', 'Taint Buy');
   return true;
 }
 
@@ -7456,11 +7718,11 @@ document.getElementById('tbSort').addEventListener('change', function() {
 /* ── Calculation-based personalised picks ── */
 document.getElementById('tbAiBtn').addEventListener('click', async () => {
   const btn  = document.getElementById('tbAiBtn');
-  btn.textContent = 'Analysing your carbon profile...';
+  btn.textContent = 'Ranking fulfilment fit...';
   btn.disabled = true;
   const profile = tbBuildUserCalculationProfile();
   tbRenderCalculationPicks(profile);
-  btn.textContent = 'Refresh Picks';
+  btn.textContent = 'Refresh Ranking';
   btn.disabled = false;
 });
 

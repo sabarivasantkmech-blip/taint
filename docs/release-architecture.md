@@ -42,6 +42,16 @@ Configure these once in both repositories where applicable:
 9. Enable prevent self-review if available.
 10. Limit `production` deployment branches to `main`.
 
+## Security Gates
+
+Development and promotion workflows run the SSDLC checks from `docs/secure-sdlc.md`:
+
+- JavaScript syntax checks for application, runtime config, registry, and validation scripts.
+- `node scripts/validate-factor-registry.mjs` for scientific claim hygiene.
+- `node scripts/validate-security-posture.mjs` for CSP, dependency pins, SRI, secret leakage, bundle exclusions, workflow posture, and production approval checks.
+
+Production repository validation repeats static bundle checks and requires the GitHub `production` Environment approval before Pages deployment.
+
 For `sabarivasantkmech-blip/taint-prod`, enable GitHub Pages once in Settings -> Pages by setting Build and deployment Source to `GitHub Actions`. Until that is enabled, the production workflow validates the bundle and skips the deploy step with a notice instead of failing red.
 
 ## Dev Repository Secrets And Variables
@@ -101,3 +111,9 @@ After DNS is correct, add a root `CNAME` file in the production repository conta
 The development Pages bundle uses `environment: 'dev'` and `https://pywjwsrjzgkvgplkxdry.supabase.co`.
 
 The production Pages bundle uses `environment: 'prod'` and `https://oavkdvuvlupawxhjtowh.supabase.co`.
+
+## Dev Database Keepalive
+
+The dev repository includes `Dev DB Keepalive`, a scheduled GitHub Actions workflow that runs daily at 03:15 UTC. It executes `node scripts/check-dev-db.mjs`, which performs a read-only Supabase REST query against `public.stats`.
+
+The workflow can also be run manually with `workflow_dispatch` when checking whether the dev database is reachable. It uses optional repository variables `TAINT_DEV_SUPABASE_URL` and `TAINT_DEV_SUPABASE_PUBLISHABLE_KEY`, falling back to the checked-in dev browser-safe project URL and publishable key.

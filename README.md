@@ -7,6 +7,7 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 - `index.html` - deployable application entry point.
 - `assets/css/app.css` - application styles split out of the original standalone HTML.
 - `assets/js/app.js` - application logic split out of the original standalone HTML.
+- `assets/js/factor-registry.js` - auditable emission factor registry with value, unit, geography, year, source, boundary, and confidence metadata.
 - `assets/js/leaflet-popup-sanitize.js` - Leaflet popup hardening shim.
 - `assets/js/supabase-runtime-config.js` - browser runtime wrapper for `supabase-config.js`.
 - `archive/chennai_carbon_calculator_17_merged.html` - archived legacy single-file copy retained for comparison/reference.
@@ -21,6 +22,9 @@ TAINT is a browser-based carbon emissions calculator for Chennai and other city 
 - `supabase_sensitive_data_encryption.sql` - Supabase Vault-backed encrypted sensitive user records and RPC helpers.
 - `supabase_frontend_connection.md` - setup steps for connecting the front end to Supabase.
 - `dependency-security-scan.md` - dependency scan and vulnerability mitigation notes.
+- `SECURITY.md` - vulnerability reporting and security baseline.
+- `docs/secure-sdlc.md` - secure software development lifecycle for the whole app.
+- `docs/security-release-checklist.md` - pre-release security checklist for dev-to-prod promotion.
 - `vendor/leaflet/1.9.4/` - local Leaflet JS/CSS/images used by the route map.
 
 ## Supabase Setup
@@ -60,6 +64,16 @@ auth: {
 }
 ```
 
+## Runtime Multitasking
+
+The browser app supports parallel background work for normal user flows:
+
+- Supabase writes use a bounded queue with up to 6 concurrent write tasks.
+- Each browser tab gets a per-tab runtime session id for diagnostics.
+- Recent calculation lists sync across open tabs with `BroadcastChannel` and `storage` events.
+- Local recent-history updates merge by record id and timestamp to reduce overwrite conflicts between parallel sessions.
+- The Admin overview shows the current tab session id, running/queued write count, and completed/skipped write attempts.
+
 ## Sign-Up And Password Reset
 
 TAINT uses Supabase Auth for email/password accounts when Supabase is configured. Sign-up sends the normal Supabase confirmation/acknowledgement email to the new user. The app never emails plaintext passwords or credentials.
@@ -83,3 +97,29 @@ Use `main` as the dev trunk branch in this repository. Feature or fix branches s
 Production is isolated in a separate repository, `sabarivasantkmech-blip/taint-prod`. The manual `Promote Dev Bundle To Prod Repo` workflow builds a production static bundle with production Supabase settings, pushes it to a release branch in the prod repository, and opens a production release PR. The prod repository deploys GitHub Pages only after the `production` GitHub Environment is approved.
 
 See `docs/release-architecture.md` for the full approval, custom domain, and dev/prod Supabase setup.
+See `docs/factor-registry.md` for the scientific factor registry rules and scale-up criteria.
+See `docs/calculation-benchmark.md` for benchmark checks against public carbon-calculation references.
+
+Validate the scientific factor registry before release:
+
+```powershell
+node scripts/validate-factor-registry.mjs
+```
+
+Benchmark the calculator factors and formulas against public reference values:
+
+```powershell
+node scripts/benchmark-carbon-calculations.mjs
+```
+
+Validate the application security posture before release:
+
+```powershell
+node scripts/validate-security-posture.mjs
+```
+
+Check the dev Supabase database status with the same read-only ping used by the scheduled keepalive workflow:
+
+```powershell
+node scripts/check-dev-db.mjs
+```

@@ -103,10 +103,10 @@
     </div>
 
     <!-- Language & country -->
-    <div class="lang-chip" title="Website language and target region">
-      <span>🇮🇳</span>
-      <span>English</span>
-      <span style="opacity:.5;font-size:10px">· India</span>
+    <div class="lang-chip" title="Language: English; country: India">
+      <span>EN</span>
+      <span class="lang-separator">/</span>
+      <span>IND</span>
     </div>
 
     <!-- Dark / light theme toggle -->
@@ -122,24 +122,31 @@
         <div class="account-menu-title" id="accountMenuName">Signed out</div>
         <div class="account-menu-email" id="accountMenuEmail">Not signed in</div>
         <div class="account-menu-meta" id="accountMenuProvider">Local browser</div>
-        <button class="account-menu-action" id="accountPrefsBtn" type="button" aria-expanded="false" aria-controls="accountPreferences">Settings - Preferences</button>
+        <button class="account-menu-action" id="accountPrefsBtn" type="button" aria-expanded="false" aria-controls="accountPreferences">Settings &gt; Preferences</button>
         <div class="account-preferences" id="accountPreferences" hidden>
-          <div class="account-pref-section">
-            <div class="account-pref-title">Preferences</div>
-            <p>Manage first-party storage used for calculations, profile state and cookie acknowledgement.</p>
-            <div class="account-pref-actions">
-              <button type="button" id="prefCookieNecessaryBtn">Necessary only</button>
-              <button type="button" id="prefCookieAcceptBtn">Accept all</button>
-              <button type="button" id="prefCookieClearBtn">Clear</button>
-            </div>
+          <div class="account-pref-breadcrumb" id="accountPrefBreadcrumb">Settings &gt; Preferences &gt; Cookies</div>
+          <div class="account-pref-tabs" role="tablist" aria-label="Preference categories">
+            <button type="button" class="active" id="prefCookiesTab" data-pref-panel="cookies" role="tab" aria-selected="true" aria-controls="prefCookiesPanel">Cookies</button>
+            <button type="button" id="prefThemeTab" data-pref-panel="theme" role="tab" aria-selected="false" aria-controls="prefThemePanel">Theme</button>
           </div>
-          <div class="account-pref-section">
-            <div class="account-pref-title">Theme</div>
+          <div class="account-pref-section" id="prefCookiesPanel" data-pref-section="cookies" role="tabpanel" aria-labelledby="prefCookiesTab">
+            <div class="account-pref-title">Cookie Storage</div>
+            <p>Necessary keeps sign-in and security basics only. Full storage also keeps preferences, saved calculations and fulfilment lists on this device.</p>
+            <div class="account-pref-actions">
+              <button type="button" id="prefCookieNecessaryBtn" aria-pressed="false">Necessary</button>
+              <button type="button" id="prefCookieAcceptBtn" aria-pressed="false">Full storage</button>
+              <button type="button" id="prefCookieClearBtn">Reset notice</button>
+            </div>
+            <div class="account-pref-status" id="prefCookieStatus">No storage choice recorded.</div>
+          </div>
+          <div class="account-pref-section" id="prefThemePanel" data-pref-section="theme" role="tabpanel" aria-labelledby="prefThemeTab" hidden>
+            <div class="account-pref-title">Display Theme</div>
             <p>Choose the display mode for this workspace.</p>
             <div class="account-pref-actions two">
-              <button type="button" id="prefThemeDark">Dark</button>
-              <button type="button" id="prefThemeLight">Light</button>
+              <button type="button" id="prefThemeDark" aria-pressed="false">Dark</button>
+              <button type="button" id="prefThemeLight" aria-pressed="false">Light</button>
             </div>
+            <div class="account-pref-status" id="prefThemeStatus">Theme follows the current workspace setting.</div>
           </div>
         </div>
         <button class="account-menu-action" id="accountDetailsBtn" type="button">Account details</button>
@@ -692,6 +699,11 @@
       <span id="adminEnvProject">Data project</span>
       <span id="adminEnvSite">Site endpoint</span>
     </div>
+    <div class="admin-concurrency-row" aria-label="Runtime multitasking status">
+      <span>Session <b id="adminSessionId">local</b></span>
+      <span>Writes <b id="adminConcurrency">0/6 running, 0 queued</b></span>
+      <span>Tasks <b id="adminWriteStats">0 done, 0 skipped</b></span>
+    </div>
     <div class="layer-grid">
       <div class="layer-tile presentation">
         <b>Presentation</b>
@@ -703,7 +715,7 @@
       </div>
       <div class="layer-tile persistence">
         <b>Persistence</b>
-        <span>First-party cookies, browser storage fallback, cloud authentication, and queued writes.</span>
+        <span>First-party cookies, browser storage fallback, cloud authentication, cross-tab sync, and parallel queued writes.</span>
       </div>
       <div class="layer-tile data">
         <b>Data</b>
@@ -1607,15 +1619,15 @@
     <a href="#tbHowItWorks" class="tb-disc-link">How it works ↓</a>
   </div>
 
-  <!-- AI Recommendations strip -->
+  <!-- Profile-ranked fulfilment strip -->
   <div class="card tb-ai-card" id="tbAiCard">
-    <div class="card-title">Recommended for You
-      <span class="tb-ai-badge">Calculation-based</span>
+    <div class="card-title">Fulfilment Intelligence
+      <span class="tb-ai-badge">Profile-ranked</span>
     </div>
     <div class="tb-ai-body" id="tbAiBody">
-      <div class="tb-ai-hint">Complete <strong>My Taint</strong> first to get personalised picks based on your biggest carbon sources.</div>
+      <div class="tb-ai-hint">Complete <strong>My Taint</strong> first to rank low-carbon fulfilment options by your largest footprint sources.</div>
     </div>
-    <button class="tb-ai-btn" id="tbAiBtn">Get My Picks</button>
+    <button class="tb-ai-btn" id="tbAiBtn">Rank Fulfilment</button>
   </div>
 
   <!-- Category filter -->
@@ -1644,9 +1656,9 @@
   <div class="tb-grid" id="tbGrid"></div>
 
   <div class="card recent-card" id="buyHistoryCard">
-    <div class="card-title">Taint Buy Checkout List <span class="recent-meta" id="buyRecentMeta">latest 5</span></div>
+    <div class="card-title">User Fulfilment Queue <span class="recent-meta" id="buyRecentMeta">latest 5</span></div>
     <div class="recent-layout">
-      <div class="recent-list" id="buyRecentList"><div class="recent-empty">Open a vendor link or mark a product bought to build your list.</div></div>
+      <div class="recent-list" id="buyRecentList"><div class="recent-empty">Open a vendor link or mark a product fulfilled to build your list.</div></div>
       <div class="trend-chart" id="buyTrendChart" aria-label="Taint Buy trend chart"></div>
     </div>
   </div>
@@ -1823,6 +1835,7 @@
      ═══════════════════════════════════════════════ -->
 <script src="./supabase-config.js?v=20260601-prod-branding"></script>
 <script src="./assets/js/supabase-runtime-config.js?v=20260605-db-report-ui" defer></script>
+<script src="./assets/js/factor-registry.js?v=20260610-factor-registry" defer></script>
 
 <!-- ═══════════════════════════════════════════════
      MAIN APPLICATION SCRIPT
@@ -1910,13 +1923,13 @@
 <div class="cookie-consent hidden" id="cookieConsent" role="dialog" aria-live="polite" aria-label="Cookie notice">
   <span class="cookie-consent-icon" aria-hidden="true">Cookie</span>
   <div class="cookie-consent-copy">
-    <span>We use browser storage to save your calculations, preferences and profile. No third-party ad trackers.</span>
+    <span>TAINT uses first-party browser storage for sign-in, preferences, saved calculations and fulfilment lists. No third-party ad trackers.</span>
   </div>
   <div class="cookie-consent-actions">
-    <button type="button" id="cookieNecessaryBtn" class="cookie-secondary-btn">Necessary only</button>
-    <button type="button" id="cookieCustomizeBtn" class="cookie-secondary-btn">Customize</button>
-    <button type="button" id="cookieAcceptBtn" class="cookie-primary-btn">Accept All</button>
-    <a href="#accountPreferences" class="cookie-policy-link">Cookie Policy</a>
+    <button type="button" id="cookieNecessaryBtn" class="cookie-secondary-btn">Necessary</button>
+    <button type="button" id="cookieCustomizeBtn" class="cookie-secondary-btn">Cookie Settings</button>
+    <button type="button" id="cookieAcceptBtn" class="cookie-primary-btn">Full Storage</button>
+    <a href="#accountPreferences" class="cookie-policy-link">Preferences</a>
   </div>
 </div>
 <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="false"></div>

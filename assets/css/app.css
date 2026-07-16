@@ -83,11 +83,11 @@ html.light .topbar{background:rgba(255,255,255,.92);}
   width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;
   box-shadow:0 0 20px rgba(34,211,238,.35);
 }
-.logo-text{display:flex;flex-direction:column;justify-content:center;line-height:1.04;min-width:0;}
-.logo-primary{display:flex;align-items:baseline;gap:6px;min-width:0;}
+.logo-text{display:flex;flex-direction:column;justify-content:center;align-items:stretch;line-height:1.04;min-width:0;}
+.logo-primary{display:flex;align-items:center;gap:6px;min-width:0;}
 .logo-name{font-size:20px;font-weight:800;letter-spacing:0;}
-.logo-product{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:800;color:var(--tx);letter-spacing:0;white-space:nowrap;}
-.logo-tagline{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;color:var(--green);letter-spacing:0;white-space:nowrap;}
+.logo-product{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:800;color:var(--tx);letter-spacing:0;white-space:nowrap;line-height:1;}
+.logo-tagline{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;color:var(--green);letter-spacing:0;white-space:nowrap;text-align:center;width:100%;}
 .logo-city{font-family:'DM Sans',sans-serif;font-size:9.5px;font-weight:700;color:var(--mu);letter-spacing:0;text-transform:uppercase;margin-top:1px;}
 .logo sup{font-size:9px; font-weight:400; color:var(--mu); margin-left:4px; letter-spacing:0; vertical-align:super;}
 /* Live clock pill */
@@ -132,10 +132,11 @@ html.light .topbar{background:rgba(255,255,255,.92);}
 .lang-chip{
   display:flex;align-items:center;gap:5px;
   border-radius:999px;padding:4px 10px;
-  font-size:11.5px;font-weight:500;
+  font-family:'DM Mono',monospace;font-size:11px;font-weight:800;
   background:var(--s2);border:1px solid var(--bd2);color:var(--mu);
-  white-space:nowrap;cursor:default;letter-spacing:.02em;
+  white-space:nowrap;cursor:default;letter-spacing:0;
 }
+.lang-chip .lang-separator{color:var(--hi);font-weight:700;}
 .theme-btn{
   margin-left:auto;background:var(--s2);border:1px solid var(--bd2);
   border-radius:999px;padding:5px 12px;font-size:12px;font-weight:500;
@@ -806,6 +807,9 @@ html.light .welcome-time-card{background:rgba(255,255,255,.74);}
 .admin-env-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 12px;font-size:11.5px;color:var(--mu);}
 .admin-env-row b{padding:3px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--bd2);color:var(--green);text-transform:uppercase;font-size:10.5px;letter-spacing:0;}
 .admin-env-row span:not(:first-child){padding:3px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--bd);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.admin-concurrency-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;font-size:11.5px;color:var(--mu);}
+.admin-concurrency-row span{padding:6px 8px;border-radius:6px;background:var(--s2);border:1px solid var(--bd);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.admin-concurrency-row b{color:var(--green);font-weight:800;}
 .layer-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
 .layer-tile{padding:12px;border-radius:8px;background:var(--s2);border:1px solid var(--bd);min-height:112px;}
 .layer-tile b{display:block;font-size:12px;color:var(--tx);margin-bottom:6px;}
@@ -1203,7 +1207,7 @@ html.light .welcome-time-card{background:rgba(255,255,255,.74);}
 }
 .account-menu-btn[aria-expanded="true"] span{background:var(--green);}
 .account-menu{
-  position:absolute;right:0;top:42px;min-width:260px;z-index:500;
+  position:absolute;right:0;top:42px;width:min(340px,calc(100vw - 24px));z-index:500;
   padding:12px;border:1px solid var(--bd2);border-radius:10px;background:var(--surface);
   box-shadow:0 18px 44px rgba(0,0,0,.4);display:none;
 }
@@ -1219,14 +1223,22 @@ html.light .welcome-time-card{background:rgba(255,255,255,.74);}
 .account-menu-action:hover{border-color:rgba(52,211,153,.45);color:var(--green);}
 .account-menu-action.danger:hover{border-color:rgba(220,38,38,.45);color:var(--red);}
 .account-preferences{margin-top:8px;padding:10px;border-radius:8px;border:1px solid var(--bd2);background:var(--s2);display:flex;flex-direction:column;gap:10px;}
-.account-pref-section + .account-pref-section{padding-top:10px;border-top:1px solid var(--bd);}
+.account-pref-breadcrumb{font-size:10px;font-weight:900;color:var(--hi);letter-spacing:.05em;text-transform:uppercase;}
+.account-pref-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid var(--bd);border-radius:8px;background:var(--surface);}
+.account-pref-tabs button{border:0;border-radius:6px;background:transparent;color:var(--mu);padding:7px 8px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:900;cursor:pointer;}
+.account-pref-tabs button:hover{color:var(--tx);}
+.account-pref-tabs button.active{background:rgba(52,211,153,.12);color:var(--green);}
+.account-pref-section{padding:9px;border:1px solid var(--bd);border-radius:8px;background:rgba(255,255,255,.02);}
+.account-pref-section + .account-pref-section{padding-top:9px;}
 .account-pref-title{font-size:12px;font-weight:900;color:var(--tx);margin-bottom:4px;}
 .account-preferences p{margin:0;color:var(--mu);font-size:11px;line-height:1.45;}
 .account-pref-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:9px;}
 .account-pref-actions.two{grid-template-columns:1fr 1fr;}
-.account-pref-actions button{border:1px solid var(--bd2);background:var(--surface);color:var(--mu);border-radius:7px;padding:6px 7px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap;}
+.account-pref-actions button{border:1px solid var(--bd2);background:var(--surface);color:var(--mu);border-radius:7px;padding:7px 7px;font-family:'DM Sans',sans-serif;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap;min-width:0;}
 .account-pref-actions button:hover{border-color:rgba(52,211,153,.4);color:var(--green);}
 .account-pref-actions button.active{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.10);color:var(--green);}
+.account-pref-actions button[aria-pressed="true"]{border-color:rgba(52,211,153,.55);background:rgba(52,211,153,.12);color:var(--green);}
+.account-pref-status{margin-top:8px;padding:7px 8px;border-radius:7px;background:var(--surface);border:1px solid var(--bd);font-size:10.5px;line-height:1.4;color:var(--hi);}
 
 /* ── Sidebar user section ── */
 .sb-user{
