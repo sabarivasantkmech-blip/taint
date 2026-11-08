@@ -37,7 +37,7 @@
 ╚══════════════════════════════════════════════════════════════════════════════╝
 -->
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.waqi.info https://api.open-meteo.com https://*.supabase.co https://formsubmit.co https://server.arcgisonline.com; form-action 'self' https://formsubmit.co; frame-src 'self' blob: data:; worker-src 'none'; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.waqi.info https://api.open-meteo.com https://*.supabase.co https://formsubmit.co https://server.arcgisonline.com; form-action 'self' https://formsubmit.co; frame-src 'self' blob: data:; worker-src 'none'; object-src 'none'; base-uri 'self';">
 
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>TAINT — Carbon Emissions Calculator</title>
@@ -50,9 +50,9 @@
 <script src="./assets/js/leaflet-popup-sanitize.js?v=20260527" defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
 <!-- Supabase used for Auth and persistence. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.1/dist/umd/supabase.min.js" integrity="sha384-dzQgxMPp/h+N0t5qDf6Bp516wKZr3pXgGMpA7/ZM6tiWkqYo90N060L03dxnZ8Tf" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.min.js" integrity="sha384-gnyZit14c5lnGcarmA166QQjjJXpucw25ogZXuwH3HxxY904zHkBqmxVpelsPorb" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 
-<link rel="stylesheet" href="./assets/css/app.css?v=20260605-db-report-ui"/>
+<link rel="stylesheet" href="./assets/css/app.css?v=20261108-dev-flag-feedback"/>
 
 </head>
 <body>
@@ -104,6 +104,7 @@
 
     <!-- Language & country -->
     <div class="lang-chip" title="Language: English; country: India">
+      <span class="lang-flag" aria-hidden="true"><img class="lang-flag-image" src="./assets/flag-in.svg?v=20261108-24spoke" alt="" width="24" height="16" decoding="async"/></span>
       <span>EN</span>
       <span class="lang-separator">/</span>
       <span>IND</span>
@@ -1572,10 +1573,12 @@
     <div class="card" id="mtFeedbackCard">
       <div class="card-title">💬 Share Your Feedback</div>
       <div id="mtFeedbackBody">
-        <div class="star-row" id="mtStarRow">
-          <span class="star" data-v="1">★</span><span class="star" data-v="2">★</span>
-          <span class="star" data-v="3">★</span><span class="star" data-v="4">★</span>
-          <span class="star" data-v="5">★</span>
+        <div class="star-row" id="mtStarRow" role="radiogroup" aria-label="Rate your experience">
+          <button class="star" type="button" data-v="1" role="radio" aria-checked="false" aria-label="1 out of 5 stars" title="1 star" tabindex="0">★</button>
+          <button class="star" type="button" data-v="2" role="radio" aria-checked="false" aria-label="2 out of 5 stars" title="2 stars" tabindex="-1">★</button>
+          <button class="star" type="button" data-v="3" role="radio" aria-checked="false" aria-label="3 out of 5 stars" title="3 stars" tabindex="-1">★</button>
+          <button class="star" type="button" data-v="4" role="radio" aria-checked="false" aria-label="4 out of 5 stars" title="4 stars" tabindex="-1">★</button>
+          <button class="star" type="button" data-v="5" role="radio" aria-checked="false" aria-label="5 out of 5 stars" title="5 stars" tabindex="-1">★</button>
         </div>
         <textarea id="mtFeedbackText" class="fb-textarea" placeholder="What could we improve?"></textarea>
         <button class="wp-calc-btn" id="mtFeedbackSubmit" style="margin-top:8px;padding:10px;font-size:13px">Submit Feedback</button>
@@ -1751,10 +1754,12 @@
           </div>
           <div class="fb-grp">
             <label>Rate this tool</label>
-            <div class="stars" id="starRow">
-              <span class="star" data-v="1">⭐</span><span class="star" data-v="2">⭐</span>
-              <span class="star" data-v="3">⭐</span><span class="star" data-v="4">⭐</span>
-              <span class="star" data-v="5">⭐</span>
+            <div class="stars" id="starRow" role="radiogroup" aria-label="Rate this tool">
+              <button class="star" type="button" data-v="1" role="radio" aria-checked="false" aria-label="1 out of 5 stars" title="1 star" tabindex="0">★</button>
+              <button class="star" type="button" data-v="2" role="radio" aria-checked="false" aria-label="2 out of 5 stars" title="2 stars" tabindex="-1">★</button>
+              <button class="star" type="button" data-v="3" role="radio" aria-checked="false" aria-label="3 out of 5 stars" title="3 stars" tabindex="-1">★</button>
+              <button class="star" type="button" data-v="4" role="radio" aria-checked="false" aria-label="4 out of 5 stars" title="4 stars" tabindex="-1">★</button>
+              <button class="star" type="button" data-v="5" role="radio" aria-checked="false" aria-label="5 out of 5 stars" title="5 stars" tabindex="-1">★</button>
             </div>
           </div>
           <div class="fb-grp">
@@ -1840,7 +1845,7 @@
 <!-- ═══════════════════════════════════════════════
      MAIN APPLICATION SCRIPT
      ═══════════════════════════════════════════════ -->
-<script src="./assets/js/app.js?v=20260605-db-report-ui" defer></script>
+<script src="./assets/js/app.js?v=20261108-dev-flag-feedback" defer></script>
 <!-- ── AUTH OVERLAY ── -->
 <div class="auth-overlay hidden" id="authOverlay">
   <div class="auth-card" id="authCard">
