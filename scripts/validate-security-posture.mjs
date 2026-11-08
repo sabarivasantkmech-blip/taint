@@ -63,10 +63,10 @@ assert(csp.includes("worker-src 'none'"), 'CSP must disable workers unless inten
 assert(csp.includes('https://*.supabase.co'), 'CSP connect-src must allow Supabase explicitly');
 warn(!csp.includes("'unsafe-inline'"), "CSP still uses 'unsafe-inline'; accepted only until inline scripts/styles are removed");
 
-assert(index.includes('@supabase/supabase-js@2.106.1'), 'Supabase JS must be pinned to the reviewed version');
-assert(/supabase-js@2\.106\.1[^>]+integrity="sha384-[^"]+"/.test(index), 'Supabase CDN script must include SRI');
-assert(/supabase-js@2\.106\.1[^>]+crossorigin="anonymous"/.test(index), 'Supabase CDN script must include crossorigin');
-assert(/supabase-js@2\.106\.1[^>]+referrerpolicy="no-referrer"/.test(index), 'Supabase CDN script must include no-referrer');
+assert(index.includes('@supabase/supabase-js@2.119.0'), 'Supabase JS must be pinned to the reviewed version');
+assert(/supabase-js@2\.119\.0[^>]+integrity="sha384-[^"]+"/.test(index), 'Supabase CDN script must include SRI');
+assert(/supabase-js@2\.119\.0[^>]+crossorigin="anonymous"/.test(index), 'Supabase CDN script must include crossorigin');
+assert(/supabase-js@2\.119\.0[^>]+referrerpolicy="no-referrer"/.test(index), 'Supabase CDN script must include no-referrer');
 
 const sanitizerPos = index.indexOf('leaflet-popup-sanitize.js');
 const factorPos = index.indexOf('factor-registry.js');
